@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id              String       @id @default(uuid())
+  username        String       @unique
+  fullName        String?
+  bio             String?
+  followersCount  Int          @default(0)
+  followingCount  Int          @default(0)
+  postsCount      Int          @default(0)
+  isPrivate       Boolean      @default(false)
+  profileUrl      String?
+  
+  // Status do funil
+  status          LeadStatus   @default(COLLECTED)
+  
+  // Decisões da IA / Filtro
+  filterReason    String?      // Se rejeitado, o porquê
+  analysisScore   Int?         // Score dado pela IA
+  analysisSummary String?      // Resumo da análise da IA
+  
+  // Respostas e Monitoramento
+  responseType    String?      // INTERESTED, NEUTRAL, REJECTED
+  temperature     String?      // HOT, WARM, COLD
+  respondedAt     DateTime?
+  isIgnored       Boolean      @default(false)
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  interactions    Interaction[]
+}
+
+enum LeadStatus {
+  COLLECTED
+  FILTERED_OUT
+  ANALYZED
+  APPROVED
+  REJECTED
+  CONTACTED
+  RESPONDED
+  CONVERTED
+}
+
+model Interaction {
+  id              String             @id @default(uuid())
+  leadId          String
+  lead            Lead               @relation(fields: [leadId], references: [id])
+  type            InteractionType
+  content         String?            // Mensagem enviada ou recebida
+  status          InteractionStatus  @default(PENDING)
+  scheduledFor    DateTime?
+  executedAt      DateTime?
+  errorMessage    String?
+  
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+enum InteractionType {
+  LIKE_POST
+  COMMENT_POST
+  STORY_VIEW
+  STORY_REPLY
+  DIRECT_MESSAGE
+}
+
+enum InteractionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Blacklist {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  reason      String
+  addedBy     String   @default("SYSTEM") // SYSTEM or MANUAL
+  createdAt   DateTime @default(now())
+}
+
+model ExecutionLog {
+  id          String   @id @default(uuid())
+  module      String   // COLLECTOR, FILTER, ANALYZER, EXECUTOR
+  action      String
+  status      String   // SUCCESS, ERROR
+  message     String?
+  metadata    Json?    // Dados adicionais do erro/sucesso
+  createdAt   DateTime @default(now())
+}

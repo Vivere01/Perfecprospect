@@ -25,7 +25,7 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
   
   // Launch browser with stealth-like arguments
   const browser = await chromium.launch({
-    headless: env.BROWSER_HEADLESS, 
+    headless: true, // Forçado true para garantir funcionamento na VPS
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

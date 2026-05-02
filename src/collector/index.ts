@@ -107,6 +107,66 @@ async function extractFromDialog(page: any, dialogSelector: string, maxItems: nu
 }
 
 /**
+ * Extracts usernames directly from a page (no dialog).
+ * Used when Instagram navigates to a /liked_by/ page instead of opening a dialog.
+ */
+async function extractFromPage(page: any, maxItems: number) {
+  logger.info(`[COLLECTOR] Extracting from page directly. Target: ${maxItems}`);
+  const collected = new Set<string>();
+
+  // Log page content for debugging
+  const allLinks = await page.locator('a').evaluateAll((els: any[]) => 
+    els.slice(0, 40).map((e: any) => ({ href: e.href, text: e.textContent?.trim().substring(0, 60) }))
+  );
+  logger.info(`[COLLECTOR] Found ${allLinks.length} links on page`);
+  logger.debug(`[COLLECTOR] Page links: ${JSON.stringify(allLinks.slice(0, 15))}`);
+
+  let noNewItemsCount = 0;
+
+  while (collected.size < maxItems && noNewItemsCount < 4) {
+    let addedInThisPass = 0;
+
+    // Look for profile links on the page
+    const profileLinks = page.locator('a[href^="/"]');
+    const count = await profileLinks.count();
+
+    for (let i = 0; i < count; i++) {
+      const href = await profileLinks.nth(i).getAttribute('href');
+      if (href) {
+        // Filter: only username links (single path segment, no special pages)
+        const cleanHref = href.replace(/^\/|\/$/g, '');
+        const isUsername = cleanHref.length > 1 
+          && !cleanHref.includes('/') 
+          && !cleanHref.startsWith('p')
+          && !['explore', 'accounts', 'direct', 'stories', 'reels', 'reel'].includes(cleanHref);
+        
+        if (isUsername && !collected.has(cleanHref)) {
+          collected.add(cleanHref);
+          addedInThisPass++;
+          if (collected.size >= maxItems) break;
+        }
+      }
+    }
+
+    if (addedInThisPass === 0) {
+      noNewItemsCount++;
+    } else {
+      noNewItemsCount = 0;
+      logger.debug(`[COLLECTOR] Page extraction: ${collected.size}/${maxItems} leads...`);
+    }
+
+    if (collected.size >= maxItems) break;
+
+    // Scroll down to load more
+    await page.mouse.wheel(0, Math.floor(Math.random() * 800) + 400);
+    await humanDelay(2000, 4000);
+  }
+
+  logger.info(`[COLLECTOR] Page extraction complete. Total: ${collected.size}`);
+  return Array.from(collected);
+}
+
+/**
  * Main Collector Entrypoint. 
  * Navigates to a source and extracts profiles incrementally.
  */
@@ -128,35 +188,31 @@ export async function runCollector(options: CollectorOptions) {
     let usernames: string[] = [];
 
     if (options.mode === 'LIKERS') {
-      // Strategy: Try multiple selectors to find the likers link
-      const likersSelectors = [
-        'a[href$="liked_by/"]',
-        'a[href*="liked_by"]',
-        'section a:has-text("curtida")',
-        'section a:has-text("like")',
-      ];
-      
-      let likersLink = null;
-      for (const selector of likersSelectors) {
-        const el = page.locator(selector).first();
-        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
-          likersLink = el;
-          logger.info(`[COLLECTOR] Found likers link with selector: ${selector}`);
-          break;
-        }
-      }
+      // Strategy 1: Navigate directly to the liked_by page
+      const likedByUrl = options.sourceUrl.replace(/\/$/, '') + '/liked_by/';
+      logger.info(`[COLLECTOR] Navigating directly to likers page: ${likedByUrl}`);
+      await page.goto(likedByUrl, { waitUntil: 'domcontentloaded' });
+      await humanDelay(3000, 6000);
 
-      if (likersLink) {
-        await likersLink.click();
-        await humanDelay(3000, 6000);
-        
-        // The dialog usually has role="dialog"
-        usernames = await extractFromDialog(page, 'div[role="dialog"] div:has(> div > div > a)', maxLeads);
+      const afterUrl = page.url();
+      const afterTitle = await page.title();
+      logger.info(`[COLLECTOR] Likers page loaded. URL: ${afterUrl} | Title: ${afterTitle}`);
+
+      // Take a diagnostic screenshot to see what we're working with
+      const screenshotPath = path.join(process.cwd(), 'sessions', `debug-likers-page-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logger.info(`[COLLECTOR] Likers page screenshot saved: ${screenshotPath}`);
+
+      // Try to extract from dialog first (some Instagram versions still use dialog)
+      const hasDialog = await page.locator('div[role="dialog"]').isVisible({ timeout: 3000 }).catch(() => false);
+      
+      if (hasDialog) {
+        logger.info(`[COLLECTOR] Dialog detected, extracting from dialog...`);
+        usernames = await extractFromDialog(page, 'div[role="dialog"]', maxLeads);
       } else {
-        logger.warn(`[COLLECTOR] Likers link not found on ${options.sourceUrl}`);
-        const screenshotPath = path.join(process.cwd(), 'sessions', `debug-likers-${Date.now()}.png`);
-        await page.screenshot({ path: screenshotPath, fullPage: true });
-        logger.info(`[COLLECTOR] Diagnostic screenshot saved: ${screenshotPath}`);
+        // Extract directly from the page (no dialog)
+        logger.info(`[COLLECTOR] No dialog, extracting from page directly...`);
+        usernames = await extractFromPage(page, maxLeads);
       }
     } 
     else if (options.mode === 'FOLLOWERS') {

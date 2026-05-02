@@ -2,6 +2,7 @@ import { chromium, BrowserContext, Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
+import { env } from './env';
 
 const SESSIONS_DIR = path.resolve(process.cwd(), 'sessions');
 
@@ -24,7 +25,7 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
   
   // Launch browser with stealth-like arguments
   const browser = await chromium.launch({
-    headless: false, // For debugging and mimicking real usage. Set true carefully later.
+    headless: env.BROWSER_HEADLESS, 
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

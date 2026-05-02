@@ -13,6 +13,7 @@ const envSchema = z.object({
   DEEPSEEK_API_KEY: z.string(), // Nova chave para o DeepSeek V4
   INSTAGRAM_USERNAME: z.string(),
   INSTAGRAM_PASSWORD: z.string(),
+  BROWSER_HEADLESS: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
 });
 
 const _env = envSchema.safeParse(process.env);

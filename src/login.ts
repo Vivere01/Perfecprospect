@@ -2,6 +2,8 @@ import { getBrowserSession } from './config/browser';
 import { logger } from './utils/logger';
 import { humanDelay } from './utils/timing';
 
+process.env.BROWSER_HEADLESS = 'false';
+
 async function runLogin() {
   logger.info('🚀 Iniciando login manual para autenticação (2FA)...');
   

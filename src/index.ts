@@ -45,22 +45,20 @@ function startMonitorLoop() {
 }
 
 async function seedCollection() {
-  logger.info("🌱 Semeando os primeiros jobs de extração...");
+  logger.info("🌱 Semeando jobs de extração (Modo: CURTIDAS em posts de barbearias)...");
   
-  await prospectingQueue.add("COLLECT_PROFILE", {
-    source: "followers",
-    target: "lincohnagner"
-  });
+  // Posts de barbearias/barbeiros relevantes - curtidores são leads mais engajados
+  const targetPosts = [
+    "https://www.instagram.com/p/DXrUCKLjoM4/",
+    // Adicione mais URLs de posts de barbearias aqui
+  ];
 
-  await prospectingQueue.add("COLLECT_PROFILE", {
-    source: "likes",
-    postUrl: "https://www.instagram.com/p/DXrUCKLjoM4/"
-  });
-
-  await prospectingQueue.add("COLLECT_PROFILE", {
-    source: "followers",
-    target: "23brunno"
-  });
+  for (const postUrl of targetPosts) {
+    await prospectingQueue.add("COLLECT_PROFILE", {
+      source: "likes",
+      postUrl,
+    });
+  }
 }
 
 start().catch(err => {

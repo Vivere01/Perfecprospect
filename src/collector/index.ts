@@ -89,9 +89,25 @@ export async function runCollector(options: CollectorOptions) {
     let usernames: string[] = [];
 
     if (options.mode === 'LIKERS') {
-      // Find and click the likers count/link
-      const likersLink = page.locator('a[href$="liked_by/"]').first();
-      if (await likersLink.isVisible()) {
+      // Strategy: Try multiple selectors to find the likers link
+      const likersSelectors = [
+        'a[href$="liked_by/"]',
+        'a[href*="liked_by"]',
+        'section a:has-text("curtida")',
+        'section a:has-text("like")',
+      ];
+      
+      let likersLink = null;
+      for (const selector of likersSelectors) {
+        const el = page.locator(selector).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          likersLink = el;
+          logger.info(`[COLLECTOR] Found likers link with selector: ${selector}`);
+          break;
+        }
+      }
+
+      if (likersLink) {
         await likersLink.click();
         await humanDelay(3000, 6000);
         
@@ -99,23 +115,44 @@ export async function runCollector(options: CollectorOptions) {
         usernames = await extractFromDialog(page, 'div[role="dialog"] div:has(> div > div > a)', maxLeads);
       } else {
         logger.warn(`[COLLECTOR] Likers link not found on ${options.sourceUrl}`);
-        // Save diagnostic screenshot
         const screenshotPath = path.join(process.cwd(), 'sessions', `debug-likers-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
         logger.info(`[COLLECTOR] Diagnostic screenshot saved: ${screenshotPath}`);
       }
     } 
     else if (options.mode === 'FOLLOWERS') {
-      // Find and click followers link
-      const followersLink = page.locator('a[href$="/followers/"]').first();
-      if (await followersLink.isVisible()) {
+      // Strategy: Try multiple selectors to find the followers link
+      const followersSelectors = [
+        'a[href$="/followers/"]',
+        'a[href*="/followers"]',
+        'a:has-text("seguidores")',
+        'a:has-text("followers")',
+        'header a:has-text("seguidores")',
+        'ul li a:has-text("seguidores")',
+      ];
+      
+      let followersLink = null;
+      for (const selector of followersSelectors) {
+        const el = page.locator(selector).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          followersLink = el;
+          logger.info(`[COLLECTOR] Found followers link with selector: ${selector}`);
+          break;
+        }
+      }
+
+      if (followersLink) {
         await followersLink.click();
         await humanDelay(3000, 6000);
         
         usernames = await extractFromDialog(page, 'div[role="dialog"]', maxLeads);
       } else {
         logger.warn(`[COLLECTOR] Followers link not found on ${options.sourceUrl}`);
-        // Save diagnostic screenshot
+        // Log all links on page for debugging
+        const allLinks = await page.locator('a').evaluateAll((els: any[]) => 
+          els.slice(0, 30).map((e: any) => ({ href: e.href, text: e.textContent?.trim().substring(0, 50) }))
+        );
+        logger.info(`[COLLECTOR] Page links for debug: ${JSON.stringify(allLinks)}`);
         const screenshotPath = path.join(process.cwd(), 'sessions', `debug-followers-${Date.now()}.png`);
         await page.screenshot({ path: screenshotPath, fullPage: true });
         logger.info(`[COLLECTOR] Diagnostic screenshot saved: ${screenshotPath}`);

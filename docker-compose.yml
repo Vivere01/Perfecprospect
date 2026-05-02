@@ -20,6 +20,8 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    volumes:
+      - ./sessions:/app/sessions
 
   postgres:
     image: postgres:15-alpine
@@ -52,3 +54,4 @@ volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  sessions:

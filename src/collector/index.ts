@@ -18,32 +18,74 @@ async function extractFromDialog(page: any, dialogSelector: string, maxItems: nu
   logger.info(`[COLLECTOR] Starting progressive extraction. Target: ${maxItems}`);
   const collected = new Set<string>();
   
-  await page.waitForSelector(dialogSelector);
-  const scrollableDiv = page.locator(dialogSelector);
+  // Try multiple selectors to find the dialog
+  const dialogSelectors = [
+    dialogSelector,
+    'div[role="dialog"]',
+    '[role="dialog"]',
+  ];
+
+  let dialog = null;
+  for (const sel of dialogSelectors) {
+    try {
+      await page.waitForSelector(sel, { timeout: 10000 });
+      dialog = page.locator(sel);
+      logger.info(`[COLLECTOR] Dialog found with selector: ${sel}`);
+      break;
+    } catch {
+      logger.debug(`[COLLECTOR] Dialog selector failed: ${sel}`);
+    }
+  }
+
+  if (!dialog) {
+    logger.error(`[COLLECTOR] No dialog found. Taking screenshot...`);
+    const screenshotPath = path.join(process.cwd(), 'sessions', `debug-no-dialog-${Date.now()}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    return [];
+  }
+
+  // Multiple strategies to find user links inside the dialog
+  const linkSelectors = [
+    'a[role="link"]:has(img)',
+    'a[role="link"]',
+    'a:has(img[alt])',
+    'a[href^="/"]',
+  ];
 
   let noNewItemsCount = 0;
 
   while (collected.size < maxItems && noNewItemsCount < 3) {
-    // Extract current visible items
-    const elements = scrollableDiv.locator('a[role="link"]:has(img)'); // usually user links have img
-    const count = await elements.count();
-    
     let addedInThisPass = 0;
-    
-    for (let i = 0; i < count; i++) {
-      const href = await elements.nth(i).getAttribute('href');
-      if (href) {
-        const username = href.replace(/\//g, '');
-        if (!collected.has(username) && username !== '') {
-          collected.add(username);
-          addedInThisPass++;
-          if (collected.size >= maxItems) break;
+
+    // Try each link selector strategy
+    for (const linkSel of linkSelectors) {
+      const elements = dialog.locator(linkSel);
+      const count = await elements.count();
+      
+      if (count === 0) continue;
+      
+      for (let i = 0; i < count; i++) {
+        const href = await elements.nth(i).getAttribute('href');
+        if (href && href.startsWith('/') && !href.includes('/p/') && !href.includes('/explore/')) {
+          const username = href.replace(/\//g, '');
+          if (!collected.has(username) && username !== '' && username.length > 1) {
+            collected.add(username);
+            addedInThisPass++;
+            if (collected.size >= maxItems) break;
+          }
         }
       }
+      
+      if (addedInThisPass > 0) break; // Found working selector, no need to try others
     }
 
     if (addedInThisPass === 0) {
       noNewItemsCount++;
+      if (noNewItemsCount === 1) {
+        // Debug: log what's inside the dialog on first failure
+        const dialogHtml = await dialog.innerHTML().catch(() => 'unable to get innerHTML');
+        logger.debug(`[COLLECTOR] Dialog inner HTML (first 500 chars): ${dialogHtml.substring(0, 500)}`);
+      }
     } else {
       noNewItemsCount = 0;
       logger.debug(`[COLLECTOR] Collected ${collected.size}/${maxItems} leads...`);
@@ -53,17 +95,14 @@ async function extractFromDialog(page: any, dialogSelector: string, maxItems: nu
 
     // Simulate human scroll inside the dialog
     logger.debug(`[COLLECTOR] Scrolling down to load more...`);
-    // Playwright mouse wheel might not target the inner div perfectly if not hovered
-    await scrollableDiv.hover();
+    await dialog.hover();
     await page.mouse.wheel(0, Math.floor(Math.random() * 800) + 400);
     
-    // Crucial: Wait for network/items to load like a human waiting
     await humanDelay(2000, 5000);
-    
-    // Occasional long pause
     await occasionalLongPause(0.02);
   }
 
+  logger.info(`[COLLECTOR] Extraction complete. Total collected: ${collected.size}`);
   return Array.from(collected);
 }
 

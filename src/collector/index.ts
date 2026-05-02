@@ -2,6 +2,7 @@ import { getBrowserSession } from '../config/browser';
 import { logger } from '../utils/logger';
 import { humanDelay, microDelay, occasionalLongPause } from '../utils/timing';
 import { simulateScroll } from '../executor/actions';
+import path from 'path';
 
 export interface CollectorOptions {
   sourceUrl: string; // URL of a post or a profile
@@ -80,6 +81,11 @@ export async function runCollector(options: CollectorOptions) {
     await page.goto(options.sourceUrl, { waitUntil: 'domcontentloaded' });
     await humanDelay(4000, 8000);
 
+    // Diagnostic: Log current URL and page title to detect redirects (e.g. login page)
+    const currentUrl = page.url();
+    const pageTitle = await page.title();
+    logger.info(`[COLLECTOR] Page loaded. URL: ${currentUrl} | Title: ${pageTitle}`);
+
     let usernames: string[] = [];
 
     if (options.mode === 'LIKERS') {
@@ -93,6 +99,10 @@ export async function runCollector(options: CollectorOptions) {
         usernames = await extractFromDialog(page, 'div[role="dialog"] div:has(> div > div > a)', maxLeads);
       } else {
         logger.warn(`[COLLECTOR] Likers link not found on ${options.sourceUrl}`);
+        // Save diagnostic screenshot
+        const screenshotPath = path.join(process.cwd(), 'sessions', `debug-likers-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        logger.info(`[COLLECTOR] Diagnostic screenshot saved: ${screenshotPath}`);
       }
     } 
     else if (options.mode === 'FOLLOWERS') {
@@ -105,6 +115,10 @@ export async function runCollector(options: CollectorOptions) {
         usernames = await extractFromDialog(page, 'div[role="dialog"]', maxLeads);
       } else {
         logger.warn(`[COLLECTOR] Followers link not found on ${options.sourceUrl}`);
+        // Save diagnostic screenshot
+        const screenshotPath = path.join(process.cwd(), 'sessions', `debug-followers-${Date.now()}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        logger.info(`[COLLECTOR] Diagnostic screenshot saved: ${screenshotPath}`);
       }
     }
 
@@ -116,6 +130,12 @@ export async function runCollector(options: CollectorOptions) {
 
   } catch (error: any) {
     logger.error(`[COLLECTOR] Error during collection`, error);
+    // Save error screenshot
+    try {
+      const screenshotPath = path.join(process.cwd(), 'sessions', `debug-error-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logger.info(`[COLLECTOR] Error screenshot saved: ${screenshotPath}`);
+    } catch (_) {}
     return [];
   } finally {
     await close();

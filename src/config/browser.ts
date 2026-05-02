@@ -23,9 +23,12 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
 
   const storageStatePath = path.join(SESSIONS_DIR, `${accountId}.json`);
   
+  const isHeadless = true; 
+  logger.info(`[BROWSER] Lançando navegador. Headless mode: ${isHeadless}`);
+
   // Launch browser with stealth-like arguments
   const browser = await chromium.launch({
-    headless: true, // Forçado true para garantir funcionamento na VPS
+    headless: isHeadless, 
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

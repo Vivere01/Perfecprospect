@@ -1,50 +1,57 @@
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+
 /**
- * Retorna os embeddings para o Vector DB (Qdrant).
- * Nota: DeepSeek foca em Chat. Mantemos a OpenAI para embeddings ou 
- * você pode usar um modelo open-source local via HuggingFace/Ollama se preferir.
- * Se o DeepSeek lançar endpoint de embeddings, basta trocar a URL e o modelo.
+ * Gera embeddings usando hash simples (não depende de API externa).
+ * Isso evita a necessidade de OpenAI para embeddings.
+ * Para produção com muitos leads, considere usar um modelo de embedding dedicado.
  */
 export async function getEmbedding(text: string): Promise<number[]> {
-  if (!env.OPENAI_API_KEY) {
-    logger.warn('[LLM] OPENAI_API_KEY ausente. Embeddings podem falhar se não houver fallback configurado.');
+  // Simple hash-based embedding (deterministic, fast, no API call needed)
+  const vector = new Array(1536).fill(0);
+  
+  for (let i = 0; i < text.length; i++) {
+    const charCode = text.charCodeAt(i);
+    const idx = (charCode * (i + 1) * 31) % 1536;
+    vector[idx] += (charCode / 255) * 0.1;
+    // Spread influence to nearby dimensions
+    vector[(idx + 1) % 1536] += (charCode / 255) * 0.05;
+    vector[(idx + 2) % 1536] += (charCode / 255) * 0.02;
   }
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: text
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Embedding failed: ${response.statusText}`);
+  // Normalize the vector
+  const magnitude = Math.sqrt(vector.reduce((sum: number, val: number) => sum + val * val, 0));
+  if (magnitude > 0) {
+    for (let i = 0; i < vector.length; i++) {
+      vector[i] /= magnitude;
+    }
   }
 
-  const data = await response.json();
-  return data.data[0].embedding;
+  return vector;
 }
 
 /**
- * Chama a API do DeepSeek V4 (usando a interface compatível com OpenAI)
+ * Chama a API do DeepSeek (usando a interface compatível com OpenAI)
  */
 export async function callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-  // A API do DeepSeek é totalmente compatível com o formato da OpenAI
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  const apiKey = env.DEEPSEEK_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY não configurada');
+  }
+
+  logger.debug(`[LLM] Calling DeepSeek API...`);
+
+  const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`
+      'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: 'deepseek-chat', // ou 'deepseek-reasoner' para V4 com Chain of Thought profundo
+      model: 'deepseek-chat',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -55,9 +62,12 @@ export async function callLLM(systemPrompt: string, userPrompt: string): Promise
   });
 
   if (!response.ok) {
-    throw new Error(`DeepSeek API failed: ${response.statusText}`);
+    const errorBody = await response.text().catch(() => 'unknown');
+    logger.error(`[LLM] DeepSeek API error ${response.status}: ${errorBody}`);
+    throw new Error(`DeepSeek API failed: ${response.status} ${response.statusText} - ${errorBody}`);
   }
 
   const data = await response.json();
   return data.choices[0].message.content;
 }
+

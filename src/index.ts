@@ -3,6 +3,7 @@ import { runMonitor } from "./monitor";
 import { prospectingQueue } from "./queue";
 import { initMemory } from "./memory";
 import { logger } from "./utils/logger";
+import { startDashboard } from "./dashboard";
 
 async function start() {
   logger.info("🚀 Iniciando sistema AI Prospecting Engine...");
@@ -14,13 +15,16 @@ async function start() {
   startWorker();
   logger.info("✅ Workers ativos e escutando a fila");
 
-  // 3. Dispara coleta inicial
+  // 3. Inicia o Dashboard Web
+  startDashboard(3000);
+
+  // 4. Dispara coleta inicial
   await seedCollection();
 
-  // 4. Monitor com intervalo randômico
+  // 5. Monitor com intervalo randômico
   startMonitorLoop();
 
-  // 5. Health check
+  // 6. Health check
   setInterval(() => {
     logger.debug(`🧠 Sistema ativo: ${new Date().toISOString()}`);
   }, 60000);

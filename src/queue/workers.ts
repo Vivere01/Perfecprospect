@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { QUEUE_NAME, redisConnection, CollectProfileData, AnalyzeProfileData, ExecuteInteractionData, prospectingQueue } from './index';
+import { QUEUE_NAME, INTERACTION_QUEUE_NAME, redisConnection, CollectProfileData, AnalyzeProfileData, ExecuteInteractionData, prospectingQueue, interactionQueue } from './index';
 import { logger } from '../utils/logger';
 import { runCollector } from '../collector';
 import { runAnalyzer } from '../analyzer';
@@ -32,9 +32,6 @@ const processCollectProfile = async (data: CollectProfileData) => {
 const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
   logger.info(`[WORKER] Analyzing profile: ${data.username}`);
   
-  // Em um cenário real, precisaríamos raspar a bio do usuário aqui se já não tivermos
-  // Vamos assumir que recebemos ou raspamos o dado básico.
-  
   const result = await runAnalyzer({
     username: data.username,
     followersCount: 1500, // Mockado para exemplo
@@ -56,14 +53,14 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
         }
       });
 
-      // Enfileira a Execução (Com atraso aleatório brutal para segurança)
-      await prospectingQueue.add('EXECUTE_INTERACTION', {
+      // Enfileira a Execução na fila DEDICADA para mensagens (com atraso aleatório)
+      await interactionQueue.add('EXECUTE_INTERACTION', {
         interactionId: interaction.id,
         leadId: lead.id,
         username: data.username,
         message: result.message
       }, {
-        delay: Math.floor(Math.random() * 3600000) // Manda a DM num intervalo de até 1 hora
+        delay: Math.floor(Math.random() * 1800000) // Manda a DM num intervalo de até 30min
       });
     }
   }
@@ -103,11 +100,11 @@ const processExecuteInteraction = async (data: ExecuteInteractionData & { userna
 };
 
 export const startWorker = () => {
-  const worker = new Worker(
+  // WORKER DE COLETA/ANÁLISE (Sem limite diário rigoroso)
+  const prospectingWorker = new Worker(
     QUEUE_NAME,
     async (job: Job) => {
       logger.info(`Processing job ${job.id} of type ${job.name}`);
-      
       switch (job.name) {
         case 'COLLECT_PROFILE':
           await processCollectProfile(job.data as CollectProfileData);
@@ -115,27 +112,33 @@ export const startWorker = () => {
         case 'ANALYZE_PROFILE':
           await processAnalyzeProfile(job.data as AnalyzeProfileData);
           break;
-        case 'EXECUTE_INTERACTION':
-          await processExecuteInteraction(job.data as any);
-          break;
-        default:
-          logger.warn(`Unknown job type: ${job.name}`);
+      }
+    },
+    { connection: redisConnection, concurrency: 2 }
+  );
+
+  // WORKER DE MENSAGENS (Limite Exato: 40 DMs por dia!)
+  const interactionWorker = new Worker(
+    INTERACTION_QUEUE_NAME,
+    async (job: Job) => {
+      logger.info(`Processing INTERACTION job ${job.id}`);
+      if (job.name === 'EXECUTE_INTERACTION') {
+        await processExecuteInteraction(job.data as any);
       }
     },
     {
       connection: redisConnection,
-      concurrency: 2, // Baixa concorrência = mais humano
+      concurrency: 1, // Manda uma mensagem por vez
       limiter: {
         max: 40,
-        duration: 24 * 60 * 60 * 1000,
+        duration: 24 * 60 * 60 * 1000, // 24 horas
       }
     }
   );
 
-  worker.on('error', (err) => {
-    logger.error('Worker encountered an error:', err);
-  });
+  prospectingWorker.on('error', (err) => logger.error('Prospecting Worker error:', err));
+  interactionWorker.on('error', (err) => logger.error('Interaction Worker error:', err));
 
-  logger.info('Worker started and listening to queue');
-  return worker;
+  logger.info('Workers started: Prospecting (Unlimited) & Interaction (Max 40/day)');
+  return { prospectingWorker, interactionWorker };
 };

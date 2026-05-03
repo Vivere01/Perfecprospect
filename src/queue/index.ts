@@ -26,6 +26,19 @@ export const prospectingQueue = new Queue(QUEUE_NAME, {
   },
 });
 
+export const INTERACTION_QUEUE_NAME = 'interaction_queue';
+
+// The Interaction Queue instance
+export const interactionQueue = new Queue(INTERACTION_QUEUE_NAME, {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 60000 },
+    removeOnComplete: 100,
+    removeOnFail: 500,
+  },
+});
+
 export const queueEvents = new QueueEvents(QUEUE_NAME, { connection: redisConnection });
 
 queueEvents.on('completed', ({ jobId }) => {

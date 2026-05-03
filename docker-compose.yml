@@ -21,6 +21,8 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    ports:
+      - "5555:5555"
     volumes:
       - ./sessions:/app/sessions
 

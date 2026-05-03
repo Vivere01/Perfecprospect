@@ -81,7 +81,7 @@ const processExecuteInteraction = async (data: ExecuteInteractionData & { userna
   const execResult = await executeInteractionWorkflow({
     username: data.username,
     message: data.message,
-    accountId: 'conta_barbearia_01' // Histórico/Sessão por conta
+    accountId: 'default' // Usar a mesma sessão 'default' que foi logada
   });
 
   // Atualiza BD com o resultado final

@@ -84,7 +84,16 @@ export async function runAnalyzer(input: AnalyzerInput): Promise<AnalyzerResult>
     const llmResponse = await callLLM(SYSTEM_PROMPT, userPrompt);
     const parsed = JSON.parse(llmResponse);
 
-    // 5. Salva a Decisão no Banco
+    // 5. Busca Script Customizado (Novo!)
+    const config = await prisma.systemConfig.findUnique({ where: { id: 'default' } });
+    let finalMessage = parsed.message;
+    
+    if (config && config.dmScript) {
+      finalMessage = config.dmScript.replace(/@\{username\}/g, `@${input.username}`);
+      logger.info(`[ANALYZER] Using custom script for @${input.username}`);
+    }
+
+    // 6. Salva a Decisão no Banco
     const lead = await prisma.lead.upsert({
       where: { username: input.username },
       create: {
@@ -103,13 +112,13 @@ export async function runAnalyzer(input: AnalyzerInput): Promise<AnalyzerResult>
       }
     });
 
-    // 6. Salva na Memória Vetorial (LLM Wiki)
+    // 7. Salva na Memória Vetorial (LLM Wiki)
     await saveMemory({
       leadId: lead.id,
       username: lead.username,
       bio: lead.bio || '',
       decision: parsed.decision ? 'APPROVED' : 'REJECTED',
-      messageSent: parsed.message
+      messageSent: finalMessage
     });
 
     logger.info(`[ANALYZER] Finished @${input.username}. Decision: ${parsed.decision}, Score: ${parsed.score}`);
@@ -118,7 +127,7 @@ export async function runAnalyzer(input: AnalyzerInput): Promise<AnalyzerResult>
       passed: parsed.decision,
       score: parsed.score,
       reason: parsed.reason,
-      message: parsed.message
+      message: finalMessage
     };
 
   } catch (error: any) {

@@ -6,6 +6,8 @@ export interface FilterInput {
   fullName?: string;
   bio?: string;
   followersCount: number;
+  profileUrl?: string;
+  isPrivate?: boolean;
 }
 
 export interface FilterResult {

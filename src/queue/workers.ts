@@ -5,6 +5,7 @@ import { runCollector } from '../collector';
 import { runAnalyzer } from '../analyzer';
 import { executeInteractionWorkflow } from '../executor';
 import { prisma } from '../db';
+import { fetchProfileInfo } from '../collector/profileFetcher';
 
 /**
  * WORKER REAL: Integra todos os módulos com as filas
@@ -32,11 +33,20 @@ const processCollectProfile = async (data: CollectProfileData) => {
 const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
   logger.info(`[WORKER] Analyzing profile: ${data.username}`);
   
+  const profile = await fetchProfileInfo(data.username);
+  if (!profile) {
+    logger.warn(`[WORKER] Could not fetch profile info for @${data.username}. Skipping.`);
+    return;
+  }
+
   const result = await runAnalyzer({
-    username: data.username,
-    followersCount: 1500, // Mockado para exemplo
-    bio: 'Barbearia Vivere - Experiência premium', // Mockado para exemplo
-    persona: 'FRIENDLY' // Configuração de Persona por Conta
+    username: profile.username,
+    fullName: profile.fullName,
+    bio: profile.bio,
+    followersCount: profile.followersCount,
+    profileUrl: profile.profileUrl,
+    isPrivate: profile.isPrivate,
+    persona: 'FRIENDLY'
   });
 
   if (result.passed && result.message) {

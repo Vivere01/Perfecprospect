@@ -96,3 +96,8 @@ model ExecutionLog {
   metadata    Json?    // Dados adicionais do erro/sucesso
   createdAt   DateTime @default(now())
 }
+model SystemConfig {
+  id          String   @id @default("default")
+  dmScript    String   @default("Fala @{username}, tudo bem? Curti demais seu perfil! Vocês estão usando algum sistema para agendamento na barbearia?")
+  updatedAt   DateTime @updatedAt
+}

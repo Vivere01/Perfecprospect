@@ -21,7 +21,7 @@ export async function fetchProfileInfo(username: string, accountId?: string) {
     
     // Seguidores (ajustar seletor se necessário)
     const stats = await page.locator('header section ul li').evaluateAll(els => {
-      return els.map(el => el.innerText.toLowerCase());
+      return els.map(el => (el as HTMLElement).innerText.toLowerCase());
     });
 
     let followersCount = 0;

@@ -46,127 +46,461 @@ export function startDashboard(port = 3000) {
           take: 100
         });
 
-        const html = `
-<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PerfectProspect | Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        :root {
+            --bg-color: #050505;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --surface-border: rgba(255, 255, 255, 0.08);
+            --primary: #4F46E5;
+            --primary-glow: rgba(79, 70, 229, 0.4);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --success-bg: rgba(16, 185, 129, 0.1);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.1);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.1);
+            --glass-blur: blur(12px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.1), transparent 25%);
+            background-attachment: fixed;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            background: var(--surface-color);
+            border: 1px solid var(--surface-border);
+            border-radius: 20px;
+            backdrop-filter: var(--glass-blur);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .header-title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .header-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .stat-badge {
+            background: rgba(79, 70, 229, 0.15);
+            border: 1px solid rgba(79, 70, 229, 0.3);
+            color: #a5b4fc;
+            padding: 0.5rem 1.25rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .config-card {
+            background: var(--surface-color);
+            border: 1px solid var(--surface-border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: var(--glass-blur);
+            animation: fadeIn 1s ease-out;
+        }
+
+        .config-card h2 {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+        }
+
+        .config-card h2 svg {
+            width: 24px;
+            height: 24px;
+            color: var(--primary);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--surface-border);
+            border-radius: 12px;
+            padding: 1rem;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            resize: vertical;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #a5b4fc;
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--primary) 0%, #4338ca 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .data-grid-container {
+            background: var(--surface-color);
+            border: 1px solid var(--surface-border);
+            border-radius: 20px;
+            backdrop-filter: var(--glass-blur);
+            overflow: hidden;
+            animation: slideUp 0.8s ease-out;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .grid-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .grid-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th, td {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--surface-border);
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.2);
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        tbody tr {
+            transition: all 0.2s ease;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .cell-user {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-main);
+        }
+
+        .user-link {
+            font-size: 0.85rem;
+            color: #818cf8;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            transition: color 0.2s;
+        }
+
+        .user-link:hover {
+            color: #a5b4fc;
+            text-decoration: underline;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-approved { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
+        .status-contacted { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2); }
+        .status-responded { background: rgba(167, 139, 250, 0.1); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.2); }
+        .status-rejected { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .status-default { background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+
+        .score-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 700;
+            font-size: 0.9rem;
+            border: 1px solid var(--surface-border);
+        }
+
+        .cell-text {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .interaction-text {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            font-style: italic;
+        }
+
+        .int-status-completed { color: var(--success); font-weight: 600; font-size: 0.8rem; }
+        .int-status-failed { color: var(--danger); font-weight: 600; font-size: 0.8rem; }
+        .int-status-pending { color: var(--warning); font-weight: 600; font-size: 0.8rem; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Scrollbar custom */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 p-6">
-    <div class="max-w-7xl mx-auto">
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 gap-4">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900 tracking-tight text-blue-600">PerfectProspect AI</h1>
-                <p class="text-sm text-gray-500 mt-1">Gerenciamento de Leads e Automação de Prospecção.</p>
-            </div>
-            <div class="flex gap-4">
-                <div class="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-semibold border border-blue-100">
-                    Leads: \${leads.length}
-                </div>
-            </div>
-        </header>
-
-        <!-- Configuração de Script -->
-        <section class="mb-10 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span class="p-2 bg-blue-100 rounded-lg text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
-                        <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
-                    </svg>
-                </span>
-                Configuração do Script (DM)
-            </h2>
-            <form action="/save-script" method="POST" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Template da Mensagem</label>
-                    <textarea name="dmScript" rows="3" class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-700 font-medium" placeholder="Ex: Fala @{username}, tudo bem?">\${config.dmScript}</textarea>
-                    <p class="text-xs text-gray-400 mt-2">Use <code class="bg-gray-100 px-1 rounded">@{username}</code> para inserir o @ do lead automaticamente.</p>
-                </div>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold shadow-sm transition-all transform active:scale-95">
-                    Salvar Script
-                </button>
-            </form>
-        </section>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            \${leads.map(lead => {
-                const isApproved = lead.status === 'APPROVED' || lead.status === 'CONTACTED' || lead.status === 'RESPONDED';
-                const statusColor = lead.status === 'CONTACTED' || lead.status === 'RESPONDED' ? 'bg-green-100 text-green-700 border-green-200' :
-                                    lead.status === 'APPROVED' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                    lead.status === 'REJECTED' ? 'bg-red-100 text-red-700 border-red-200' :
-                                    'bg-gray-100 text-gray-700 border-gray-200';
-                
-                const interaction = lead.interactions[0];
-                const profileUrl = lead.profileUrl || \`https://instagram.com/\${lead.username}\`;
-
-                return \`
-                <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col h-full relative overflow-hidden">
-                    <div class="flex justify-between items-start mb-4">
-                        <div class="z-10">
-                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">\\\${lead.fullName || 'Lead'}</h3>
-                            <a href="\\\${profileUrl}" target="_blank" class="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors flex items-center gap-1">
-                                @\\\${lead.username}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                            </a>
-                        </div>
-                        <span class="text-[10px] px-2 py-1 rounded-full border font-bold uppercase tracking-tighter \\\${statusColor} z-10">
-                            \\\${lead.status}
-                        </span>
-                    </div>
-                    
-                    \\\${isApproved ? \\\`
-                        <div class="mb-4">
-                            <div class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Score da IA</div>
-                            <div class="flex items-center">
-                                <div class="text-2xl font-black text-gray-900">\\\${lead.analysisScore || '-'}</div>
-                                <div class="text-gray-400 text-xs ml-1">/ 10</div>
-                            </div>
-                        </div>
-                        <div class="mb-4 flex-grow">
-                            <div class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Análise</div>
-                            <p class="text-sm text-gray-600 leading-relaxed line-clamp-4">\\\${lead.analysisSummary || 'Aprovado pelo sistema.'}</p>
-                        </div>
-                    \\\` : \\\`
-                        <div class="mb-4 flex-grow">
-                            <div class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Motivo do Filtro</div>
-                            <p class="text-sm text-gray-500 italic">\\\${lead.filterReason || lead.analysisSummary || 'Não atende aos critérios.'}</p>
-                        </div>
-                    \\\`}
-
-                    \\\${interaction ? \\\`
-                        <div class="mt-auto pt-4 border-t border-gray-50">
-                            <div class="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 flex justify-between">
-                                <span>Mensagem Enviada</span>
-                                <span class="\\\${interaction.status === 'COMPLETED' ? 'text-green-600' : interaction.status === 'FAILED' ? 'text-red-500' : 'text-orange-500'} font-black">\\\${interaction.status}</span>
-                            </div>
-                            <div class="bg-gray-50 p-3 rounded-xl text-xs text-gray-700 italic border border-gray-100">
-                                "\\\${interaction.content}"
-                            </div>
-                            \\\${interaction.errorMessage ? \\\`<p class="text-[10px] text-red-400 mt-1">Error: \\\${interaction.errorMessage}</p>\\\` : ''}
-                        </div>
-                    \\\` : \\\`
-                        <div class="mt-auto pt-4 border-t border-gray-50 text-center">
-                            <span class="text-[10px] text-gray-300 font-bold uppercase">Aguardando Execução</span>
-                        </div>
-                    \\\`}
-                </div>
-                \`;
-            }).join('')}
+<body>
+    <header class="header">
+        <div>
+            <h1 class="header-title">PerfectProspect</h1>
+            <p class="header-subtitle">AI Lead Generation & DM Automation</p>
         </div>
-    </div>
+        <div class="stat-badge">
+            Total Leads: ${leads.length}
+        </div>
+    </header>
+
+    <section class="config-card">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+            </svg>
+            Configuração do Script de Abordagem (IA)
+        </h2>
+        <form action="/save-script" method="POST">
+            <div class="form-group">
+                <label>Template da Mensagem Direct</label>
+                <textarea name="dmScript" rows="3" placeholder="Ex: Fala @{username}, tudo bem?">${config.dmScript}</textarea>
+                <p class="hint">Use <code>@{username}</code> para que a IA personalize a mensagem com o @ do lead do Instagram automaticamente. O sistema envia 40 DMs por dia limitadas para evitar bloqueios.</p>
+            </div>
+            <button type="submit">Salvar Script e Ativar IA</button>
+        </form>
+    </section>
+
+    <section class="data-grid-container">
+        <div class="grid-header">
+            <h2 class="grid-title">Leads Prospectados</h2>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Lead</th>
+                        <th>Score IA</th>
+                        <th>Resumo da Análise</th>
+                        <th>Última Ação (DM)</th>
+                        <th>Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${leads.map(lead => {
+                        const statusColorClass = 
+                            lead.status === 'APPROVED' ? 'status-approved' : 
+                            lead.status === 'CONTACTED' ? 'status-contacted' : 
+                            lead.status === 'RESPONDED' ? 'status-responded' : 
+                            lead.status === 'REJECTED' || lead.status === 'FILTERED_OUT' ? 'status-rejected' : 'status-default';
+                        
+                        const interaction = lead.interactions[0];
+                        const profileUrl = lead.profileUrl || `https://instagram.com/${lead.username}`;
+                        const dateStr = new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                        
+                        let intStatusClass = 'int-status-pending';
+                        if(interaction?.status === 'COMPLETED') intStatusClass = 'int-status-completed';
+                        if(interaction?.status === 'FAILED') intStatusClass = 'int-status-failed';
+
+                        return `
+                        <tr>
+                            <td><span class="status-badge ${statusColorClass}">${lead.status}</span></td>
+                            <td>
+                                <div class="cell-user">
+                                    <span class="user-name">${lead.fullName || 'Desconhecido'}</span>
+                                    <a href="${profileUrl}" target="_blank" class="user-link">
+                                        @${lead.username}
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                    </a>
+                                </div>
+                            </td>
+                            <td>
+                                ${lead.analysisScore != null ? `<div class="score-pill">${lead.analysisScore}</div>` : '<span class="text-muted">-</span>'}
+                            </td>
+                            <td>
+                                <div class="cell-text" title="${lead.analysisSummary || lead.filterReason || ''}">
+                                    ${lead.analysisSummary || lead.filterReason || 'Sem análise'}
+                                </div>
+                            </td>
+                            <td>
+                                ${interaction ? `
+                                    <div class="cell-user">
+                                        <span class="${intStatusClass}">${interaction.status}</span>
+                                        <span class="interaction-text" title="${interaction.content}">"${interaction.content}"</span>
+                                    </div>
+                                ` : '<span class="int-status-pending">Aguardando IA</span>'}
+                            </td>
+                            <td style="color: var(--text-muted); font-size: 0.85rem;">${dateStr}</td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    </section>
 </body>
-</html>
-        `;
+</html>`;
 
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
@@ -182,6 +516,6 @@ export function startDashboard(port = 3000) {
   });
 
   server.listen(port, '0.0.0.0', () => {
-    logger.info(\`📊 Dashboard rodando na porta \${port}. Acesse no navegador!\`);
+    logger.info(`📊 Dashboard rodando na porta ${port}. Acesse no navegador!`);
   });
 }

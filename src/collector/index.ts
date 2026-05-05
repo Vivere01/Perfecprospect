@@ -15,9 +15,18 @@ export async function discoverRecentPosts(profileUrl: string, maxPosts: number =
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
     await humanDelay(4000, 8000);
 
-    // Look for post links (hrefs starting with /p/ or /reel/)
-    const postLinks = await page.locator('a[href^="/p/"], a[href^="/reel/"]').evaluateAll((els) => {
-      return els.map(e => (e as HTMLAnchorElement).href);
+    // Extrai todos os links e filtra via JavaScript para maior compatibilidade
+    const postLinks = await page.locator('a').evaluateAll((els) => {
+      return els
+        .map(e => (e as HTMLAnchorElement).href)
+        .filter(href => {
+          try {
+            const url = new URL(href);
+            return url.pathname.startsWith('/p/') || url.pathname.startsWith('/reel/');
+          } catch {
+            return href.includes('/p/') || href.includes('/reel/');
+          }
+        });
     });
 
     // Remove duplicates

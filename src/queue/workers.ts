@@ -124,7 +124,7 @@ export const startWorker = () => {
           break;
       }
     },
-    { connection: redisConnection, concurrency: 2 }
+    { connection: redisConnection, concurrency: 1 }
   );
 
   // WORKER DE MENSAGENS (Limite Exato: 40 DMs por dia!)

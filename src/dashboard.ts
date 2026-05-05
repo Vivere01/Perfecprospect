@@ -51,6 +51,7 @@ export function startDashboard(port = 3000) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="30"> <!-- Atualização em tempo real a cada 30s -->
     <title>PerfectProspect | Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

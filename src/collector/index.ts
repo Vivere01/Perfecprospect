@@ -4,6 +4,35 @@ import { humanDelay, microDelay, occasionalLongPause } from '../utils/timing';
 import { simulateScroll } from '../executor/actions';
 import path from 'path';
 
+/**
+ * Descobre automaticamente os posts mais recentes de um perfil.
+ */
+export async function discoverRecentPosts(profileUrl: string, maxPosts: number = 3, accountId?: string): Promise<string[]> {
+  logger.info(`[COLLECTOR] Discovering recent posts from ${profileUrl}`);
+  const { page, close } = await getBrowserSession(accountId);
+
+  try {
+    await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
+    await humanDelay(4000, 8000);
+
+    // Look for post links (hrefs starting with /p/ or /reel/)
+    const postLinks = await page.locator('a[href^="/p/"], a[href^="/reel/"]').evaluateAll((els) => {
+      return els.map(e => (e as HTMLAnchorElement).href);
+    });
+
+    // Remove duplicates
+    const uniquePosts = Array.from(new Set(postLinks)).slice(0, maxPosts);
+    logger.info(`[COLLECTOR] Found ${uniquePosts.length} recent posts from ${profileUrl}`);
+    return uniquePosts;
+
+  } catch (error) {
+    logger.error(`[COLLECTOR] Error discovering posts from ${profileUrl}`, error);
+    return [];
+  } finally {
+    await close();
+  }
+}
+
 export interface CollectorOptions {
   sourceUrl: string; // URL of a post or a profile
   mode: 'LIKERS' | 'FOLLOWERS';

@@ -12,6 +12,8 @@ export interface BrowserSession {
   close: () => Promise<void>;
 }
 
+let globalBrowser: any = null;
+
 /**
  * Initializes Playwright with persistent session storage.
  * Maps storage files per accountId to allow multiple accounts.
@@ -24,21 +26,22 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
   const storageStatePath = path.join(SESSIONS_DIR, `${accountId}.json`);
   
   const isHeadless = true; 
-  logger.info(`[BROWSER] Lançando navegador. Headless mode: ${isHeadless}`);
-
-  // Launch browser with stealth-like arguments
-  const browser = await chromium.launch({
-    headless: isHeadless, 
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--window-size=1280,800',
-    ],
-  });
+  
+  if (!globalBrowser) {
+    logger.info(`[BROWSER] Lançando navegador global. Headless mode: ${isHeadless}`);
+    globalBrowser = await chromium.launch({
+      headless: isHeadless, 
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1280,800',
+      ],
+    });
+  }
 
   const contextOptions: any = {
     viewport: { width: 1280, height: 800 },
@@ -55,7 +58,7 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
     logger.debug(`[BROWSER] Creating new session for account: ${accountId}`);
   }
 
-  const context = await browser.newContext(contextOptions);
+  const context = await globalBrowser.newContext(contextOptions);
 
   // Evasion tactics for context
   await context.addInitScript(() => {
@@ -72,7 +75,8 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
     // Save state before closing
     await context.storageState({ path: storageStatePath });
     logger.debug(`[BROWSER] Saved session for account: ${accountId}`);
-    await browser.close();
+    await context.close();
+    // Do not close the global browser instance here!
   };
 
   return { context, page, close };

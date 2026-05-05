@@ -48,21 +48,37 @@ function startMonitorLoop() {
   }, 5000); 
 }
 
+import { discoverRecentPosts } from "./collector";
+
 async function seedCollection() {
-  logger.info("🌱 Semeando jobs de extração (Modo: CURTIDAS em posts de barbearias)...");
+  logger.info("🌱 Iniciando rotina automática de Semeação de concorrentes...");
   
-  // Posts de barbearias/barbeiros relevantes - curtidores são leads mais engajados
-  const targetPosts = [
-    "https://www.instagram.com/p/DXrUCKLjoM4/",
-    // Adicione mais URLs de posts de barbearias aqui
+  // Aqui você define os @ dos concorrentes de sucesso que deseja monitorar.
+  // A IA vai visitar o perfil deles automaticamente, extrair os 3 posts mais recentes
+  // e coletar os likers desses posts!
+  const targetCompetitors = [
+    "https://www.instagram.com/barbeariacorleone/",
+    "https://www.instagram.com/seuelias/",
+    // Adicione mais URLs de perfis de barbearias grandes aqui
   ];
 
-  for (const postUrl of targetPosts) {
-    await prospectingQueue.add("COLLECT_PROFILE", {
-      source: "likes",
-      postUrl,
-    });
+  for (const profileUrl of targetCompetitors) {
+    // 1. Descobre os 3 posts mais recentes do concorrente
+    const recentPosts = await discoverRecentPosts(profileUrl, 3);
+    
+    // 2. Coloca os posts na fila para extrair os likers
+    for (const postUrl of recentPosts) {
+      await prospectingQueue.add("COLLECT_PROFILE", {
+        source: "likes",
+        postUrl,
+      });
+    }
   }
+
+  // Agenda para rodar novamente daqui a 24 horas para coletar NOVOS likers desses mesmos posts (ou novos que você adicionar)
+  setTimeout(() => {
+    seedCollection();
+  }, 24 * 60 * 60 * 1000); // 24 horas
 }
 
 start().catch(err => {

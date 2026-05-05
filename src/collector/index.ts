@@ -20,23 +20,23 @@ export async function discoverRecentPosts(profileUrl: string, maxPosts: number =
     logger.info(`[COLLECTOR] Profile loaded. URL: ${currentUrl} | Title: ${pageTitle}`);
 
     // Extrai links executando JS diretamente na página para evitar problemas de locator
-    const { totalLinks, postLinks } = await page.evaluate(() => {
+    const { totalLinks, hrefsList, postLinks } = await page.evaluate(() => {
       const allAnchors = Array.from(document.querySelectorAll('a'));
       const hrefs = allAnchors.map(a => a.href || '');
       
       const validPosts = hrefs.filter(href => {
         try {
           const url = new URL(href, window.location.origin);
-          return url.pathname.startsWith('/p/') || url.pathname.startsWith('/reel/');
+          return url.pathname.includes('/p/') || url.pathname.includes('/reel/');
         } catch {
           return href.includes('/p/') || href.includes('/reel/');
         }
       });
 
-      return { totalLinks: hrefs.length, postLinks: validPosts };
+      return { totalLinks: hrefs.length, hrefsList: hrefs, postLinks: validPosts };
     });
 
-    logger.info(`[COLLECTOR] Found ${totalLinks} total links on page.`);
+    logger.info(`[COLLECTOR] Found ${totalLinks} total links. First 15: ${hrefsList.slice(0, 15).join(', ')}`);
 
     // Remove duplicates
     const uniquePosts = Array.from(new Set(postLinks)).slice(0, maxPosts);

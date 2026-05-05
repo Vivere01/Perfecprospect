@@ -3,25 +3,28 @@ import { runMonitor } from "./monitor";
 import { prospectingQueue } from "./queue";
 import { initMemory } from "./memory";
 import { logger } from "./utils/logger";
-import { startDashboard } from "./dashboard";
+import { startDashboard, seedBlacklist } from "./dashboard";
 
 async function start() {
   logger.info("🚀 Iniciando sistema AI Prospecting Engine...");
 
   // 1. Inicializa dependências críticas
   await initMemory(); // Garante que o Qdrant Vector DB exista
+
+  // 2. Popula a lista de exclusão com perfis conhecidos/clientes
+  await seedBlacklist();
   
-  // 2. Inicia os Workers
+  // 3. Inicia os Workers
   startWorker();
   logger.info("✅ Workers ativos e escutando a fila");
 
-  // 3. Inicia o Dashboard Web
+  // 4. Inicia o Dashboard Web
   startDashboard(3000);
 
-  // 4. Dispara coleta inicial
+  // 5. Dispara coleta inicial
   await seedCollection();
 
-  // 5. Monitor com intervalo randômico
+  // 6. Monitor com intervalo randômico
   startMonitorLoop();
 
   // 6. Health check

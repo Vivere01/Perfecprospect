@@ -2,6 +2,23 @@ import * as http from 'http';
 import { prisma } from './db';
 import { logger } from './utils/logger';
 
+// Seed inicial da blacklist com clientes/conhecidos já cadastrados
+export async function seedBlacklist() {
+  const initialBlacklist = [
+    { username: 'rogertinoco_', reason: 'Já é cliente/conhecido', addedBy: 'MANUAL' },
+    { username: 'saviovogt', reason: 'Já é cliente/conhecido', addedBy: 'MANUAL' },
+    { username: 'luizliberdade', reason: 'Já é cliente/conhecido', addedBy: 'MANUAL' },
+  ];
+  for (const entry of initialBlacklist) {
+    await prisma.blacklist.upsert({
+      where: { username: entry.username },
+      update: {},
+      create: entry,
+    });
+  }
+  logger.info(`[BLACKLIST] Seed inicial aplicado (${initialBlacklist.length} entradas).`);
+}
+
 export function startDashboard(port = 3000) {
   const server = http.createServer(async (req, res) => {
     // Rota para salvar o script
@@ -12,7 +29,6 @@ export function startDashboard(port = 3000) {
         try {
           const params = new URLSearchParams(body);
           const dmScript = params.get('dmScript');
-          
           if (dmScript) {
             await prisma.systemConfig.upsert({
               where: { id: 'default' },
@@ -20,7 +36,6 @@ export function startDashboard(port = 3000) {
               create: { id: 'default', dmScript }
             });
           }
-          
           res.writeHead(302, { 'Location': '/' });
           res.end();
         } catch (error) {
@@ -29,6 +44,47 @@ export function startDashboard(port = 3000) {
           res.end('Erro ao salvar script');
         }
       });
+      return;
+    }
+
+    // Rota para adicionar à blacklist
+    if (req.url === '/add-blacklist' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const params = new URLSearchParams(body);
+          const rawUsername = params.get('username') || '';
+          const reason = params.get('reason') || 'Adicionado manualmente';
+          const username = rawUsername.replace('@', '').replace('https://www.instagram.com/', '').replace('/', '').trim();
+          if (username) {
+            await prisma.blacklist.upsert({
+              where: { username },
+              update: { reason },
+              create: { username, reason, addedBy: 'MANUAL' },
+            });
+            // Remove esse lead do pipeline caso já exista
+            await prisma.lead.deleteMany({ where: { username } });
+          }
+          res.writeHead(302, { 'Location': '/' });
+          res.end();
+        } catch (error) {
+          logger.error('Error adding to blacklist:', error);
+          res.writeHead(500);
+          res.end('Erro ao adicionar à lista');
+        }
+      });
+      return;
+    }
+
+    // Rota para remover da blacklist
+    if (req.url?.startsWith('/remove-blacklist/') && req.method === 'POST') {
+      const username = decodeURIComponent(req.url.replace('/remove-blacklist/', ''));
+      try {
+        await prisma.blacklist.delete({ where: { username } });
+      } catch { /* Ignora se não existir */ }
+      res.writeHead(302, { 'Location': '/' });
+      res.end();
       return;
     }
 
@@ -44,6 +100,11 @@ export function startDashboard(port = 3000) {
           orderBy: { createdAt: 'desc' },
           include: { interactions: true },
           take: 100
+        });
+
+        // Busca a lista de exclusão
+        const blacklist = await prisma.blacklist.findMany({
+          orderBy: { createdAt: 'desc' }
         });
 
         const html = `<!DOCTYPE html>
@@ -402,6 +463,123 @@ export function startDashboard(port = 3000) {
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.2);
         }
+
+        .blacklist-section {
+            background: var(--surface-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: var(--glass-blur);
+            animation: fadeIn 1s ease-out;
+        }
+
+        .blacklist-section h2 {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            color: #fca5a5;
+        }
+
+        .blacklist-add-form {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .blacklist-add-form input {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 10px;
+            padding: 0.65rem 1rem;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .blacklist-add-form input:focus {
+            border-color: var(--danger);
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+        .btn-danger:hover {
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .blacklist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .blacklist-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(239, 68, 68, 0.06);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            gap: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        .blacklist-card:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .blacklist-user {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            overflow: hidden;
+        }
+        .blacklist-username {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #fca5a5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .blacklist-reason {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .blacklist-remove-btn {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 0.3rem 0.6rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: none;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+        .blacklist-remove-btn:hover {
+            background: rgba(239, 68, 68, 0.3);
+            transform: translateY(-1px);
+            box-shadow: none;
+        }
+
+        .blacklist-empty {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -430,6 +608,39 @@ export function startDashboard(port = 3000) {
             </div>
             <button type="submit">Salvar Script e Ativar IA</button>
         </form>
+    </section>
+
+    <section class="blacklist-section">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:24px;height:24px;color:#ef4444">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            Perfis Excluídos (Não Contactar)
+        </h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.25rem">Clientes existentes, amigos, ou qualquer perfil que a IA <strong style="color:#fca5a5">nunca deve abordar</strong>. Cole o @ ou a URL do Instagram.</p>
+
+        <form class="blacklist-add-form" action="/add-blacklist" method="POST">
+            <input type="text" name="username" placeholder="@usuario ou https://www.instagram.com/usuario/" required />
+            <input type="text" name="reason" placeholder="Motivo (ex: Já é cliente)" style="max-width:280px" />
+            <button type="submit" class="btn-danger">+ Adicionar à Lista</button>
+        </form>
+
+        <div class="blacklist-grid">
+            ${blacklist.length === 0
+              ? '<p class="blacklist-empty">Nenhum perfil excluído ainda.</p>'
+              : blacklist.map(entry => `
+                <div class="blacklist-card">
+                  <div class="blacklist-user">
+                    <a href="https://www.instagram.com/${entry.username}/" target="_blank" class="blacklist-username">@${entry.username}</a>
+                    <span class="blacklist-reason">${entry.reason}</span>
+                  </div>
+                  <form action="/remove-blacklist/${encodeURIComponent(entry.username)}" method="POST" style="display:inline">
+                    <button type="submit" class="blacklist-remove-btn">Remover</button>
+                  </form>
+                </div>
+              `).join('')
+            }
+        </div>
     </section>
 
     <section class="data-grid-container">

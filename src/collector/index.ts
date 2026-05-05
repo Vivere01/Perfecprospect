@@ -15,19 +15,28 @@ export async function discoverRecentPosts(profileUrl: string, maxPosts: number =
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
     await humanDelay(4000, 8000);
 
-    // Extrai todos os links e filtra via JavaScript para maior compatibilidade
-    const postLinks = await page.locator('a').evaluateAll((els) => {
-      return els
-        .map(e => (e as HTMLAnchorElement).href)
-        .filter(href => {
-          try {
-            const url = new URL(href);
-            return url.pathname.startsWith('/p/') || url.pathname.startsWith('/reel/');
-          } catch {
-            return href.includes('/p/') || href.includes('/reel/');
-          }
-        });
+    const currentUrl = page.url();
+    const pageTitle = await page.title();
+    logger.info(`[COLLECTOR] Profile loaded. URL: ${currentUrl} | Title: ${pageTitle}`);
+
+    // Extrai links executando JS diretamente na página para evitar problemas de locator
+    const { totalLinks, postLinks } = await page.evaluate(() => {
+      const allAnchors = Array.from(document.querySelectorAll('a'));
+      const hrefs = allAnchors.map(a => a.href || '');
+      
+      const validPosts = hrefs.filter(href => {
+        try {
+          const url = new URL(href, window.location.origin);
+          return url.pathname.startsWith('/p/') || url.pathname.startsWith('/reel/');
+        } catch {
+          return href.includes('/p/') || href.includes('/reel/');
+        }
+      });
+
+      return { totalLinks: hrefs.length, postLinks: validPosts };
     });
+
+    logger.info(`[COLLECTOR] Found ${totalLinks} total links on page.`);
 
     // Remove duplicates
     const uniquePosts = Array.from(new Set(postLinks)).slice(0, maxPosts);

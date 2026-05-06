@@ -1,87 +1,193 @@
 import { startWorker } from "./queue/workers";
 import { runMonitor } from "./monitor";
-import { prospectingQueue } from "./queue";
+import { prospectingQueue, interactionQueue } from "./queue";
 import { initMemory } from "./memory";
 import { logger } from "./utils/logger";
 import { startDashboard, seedBlacklist } from "./dashboard";
+import { discoverRecentPosts } from "./collector";
+import { prisma } from "./db";
+
+// ─── Competidores a monitorar (edite aqui para adicionar mais) ─────────────
+const TARGET_COMPETITORS = [
+  "https://www.instagram.com/barbeariacorleone/",
+  "https://www.instagram.com/seuelias/",
+];
+
+// ─── Horário do CRON diário (formato cron: "minuto hora * * *") ────────────
+// Padrão: todo dia às 08:00 (horário UTC-3 = 11:00 UTC)
+const DAILY_CRON = "0 11 * * *"; // 08:00 BRT
 
 async function start() {
   logger.info("🚀 Iniciando sistema AI Prospecting Engine...");
 
   // 1. Inicializa dependências críticas
-  await initMemory(); // Garante que o Qdrant Vector DB exista
+  await initMemory();
 
-  // 2. Popula a lista de exclusão com perfis conhecidos/clientes
+  // 2. Blacklist inicial
   await seedBlacklist();
-  
-  // 3. Inicia os Workers
+
+  // 3. Registra o CRON diário de coleta (persistido no Redis — sobrevive a reinicializações)
+  await registerDailyCronJobs();
+
+  // 4. Inicia os Workers
   startWorker();
   logger.info("✅ Workers ativos e escutando a fila");
 
-  // 4. Inicia o Dashboard Web
+  // 5. Dashboard Web
   startDashboard(3000);
 
-  // 5. Dispara coleta inicial
-  await seedCollection();
+  // 6. Dispara coleta imediatamente na primeira inicialização
+  logger.info("🌱 Disparo inicial de coleta...");
+  await triggerCollection();
 
-  // 6. Monitor com intervalo randômico
+  // 7. Monitor de conversas (a cada 2~3h)
   startMonitorLoop();
 
-  // 6. Health check
+  // 8. Health check log
   setInterval(() => {
     logger.debug(`🧠 Sistema ativo: ${new Date().toISOString()}`);
   }, 60000);
+}
+
+/**
+ * Registra dois jobs repetíveis no BullMQ (CRON baseado em Redis):
+ * - DAILY_SEED: coleta leads dos competidores todo dia no horário fixo
+ * - DAILY_DM_FLUSH: reprocessa leads APPROVED que ainda não receberam DM
+ * 
+ * O BullMQ persiste esses jobs no Redis, então eles sobrevivem a
+ * reinicializações do container sem perder o agendamento.
+ */
+async function registerDailyCronJobs() {
+  // Remove schedules antigas para evitar duplicatas ao reiniciar
+  const existingRepeatable = await prospectingQueue.getRepeatableJobs();
+  for (const job of existingRepeatable) {
+    await prospectingQueue.removeRepeatableByKey(job.key);
+    logger.info(`[CRON] Job repetível removido: ${job.key}`);
+  }
+
+  // CRON 1: Coleta diária de novos leads
+  await prospectingQueue.add(
+    "DAILY_SEED",
+    { competitors: TARGET_COMPETITORS },
+    {
+      repeat: { pattern: DAILY_CRON },
+      jobId: "daily-seed-cron",
+    }
+  );
+  logger.info(`[CRON] ✅ Coleta diária agendada: ${DAILY_CRON} (08:00 BRT)`);
+
+  // CRON 2: Flush de DMs para leads APPROVED sem interação (todo dia 30min depois da coleta)
+  await prospectingQueue.add(
+    "DAILY_DM_FLUSH",
+    {},
+    {
+      repeat: { pattern: "30 11 * * *" }, // 08:30 BRT
+      jobId: "daily-dm-flush-cron",
+    }
+  );
+  logger.info(`[CRON] ✅ Flush de DMs agendado: 08:30 BRT`);
+}
+
+/**
+ * Executa a coleta real: visita os perfis competidores,
+ * extrai posts recentes e enfileira os likers para análise.
+ */
+export async function triggerCollection(competitors = TARGET_COMPETITORS) {
+  logger.info(`[SEED] Iniciando coleta de ${competitors.length} perfis competidores...`);
+  let totalPosts = 0;
+
+  for (const profileUrl of competitors) {
+    try {
+      const recentPosts = await discoverRecentPosts(profileUrl, 3);
+      logger.info(`[SEED] ${profileUrl} → ${recentPosts.length} posts encontrados`);
+
+      for (const postUrl of recentPosts) {
+        await prospectingQueue.add("COLLECT_PROFILE", {
+          source: "likes",
+          postUrl,
+        });
+        totalPosts++;
+      }
+    } catch (err) {
+      logger.error(`[SEED] Erro ao processar competidor ${profileUrl}:`, err);
+    }
+  }
+
+  logger.info(`[SEED] ✅ ${totalPosts} posts enfileirados para coleta de likers.`);
+}
+
+/**
+ * Reprocessa leads que foram aprovados pela IA mas não receberam DM ainda.
+ * Isso resolve o bug de condição de corrida onde o lead foi aprovado
+ * mas a interação não foi criada.
+ */
+export async function flushPendingDMs() {
+  logger.info(`[DM_FLUSH] Verificando leads APPROVED sem DM enviada...`);
+
+  const config = await prisma.systemConfig.findUnique({ where: { id: "default" } });
+  if (!config?.dmScript) {
+    logger.warn(`[DM_FLUSH] ⚠️ Nenhum script de DM configurado no dashboard. Configure antes de enviar.`);
+    return;
+  }
+
+  // Busca leads aprovados que nunca tiveram interação
+  const pendingLeads = await prisma.lead.findMany({
+    where: {
+      status: "APPROVED",
+      interactions: { none: {} },
+    },
+    take: 40, // Limite diário
+  });
+
+  logger.info(`[DM_FLUSH] ${pendingLeads.length} leads aprovados sem DM encontrados.`);
+
+  for (const lead of pendingLeads) {
+    const message = config.dmScript.replace(/@\{username\}/g, `@${lead.username}`);
+
+    // Cria interação PENDING no banco
+    const interaction = await prisma.interaction.create({
+      data: {
+        leadId: lead.id,
+        type: "DIRECT_MESSAGE",
+        content: message,
+        status: "PENDING",
+      },
+    });
+
+    // Enfileira na fila de interações com delay aleatório (humaniza)
+    await interactionQueue.add(
+      "EXECUTE_INTERACTION",
+      {
+        interactionId: interaction.id,
+        leadId: lead.id,
+        username: lead.username,
+        message,
+      },
+      {
+        delay: Math.floor(Math.random() * 3600000), // spread de 1h
+      }
+    );
+
+    logger.info(`[DM_FLUSH] 📤 DM enfileirada para @${lead.username}`);
+  }
+
+  logger.info(`[DM_FLUSH] ✅ ${pendingLeads.length} DMs enfileiradas com sucesso.`);
 }
 
 function startMonitorLoop() {
   async function loop() {
     const delay = Math.random() * (3 - 2) + 2; // 2h a 3h
     logger.info(`⏳ Próximo monitor em ${delay.toFixed(2)} horas`);
-
     setTimeout(async () => {
       await runMonitor();
       loop();
     }, delay * 60 * 60 * 1000);
   }
 
-  // Já dispara uma primeira vez (sem delay longo) para limpar o backlog inicial
   setTimeout(async () => {
     await runMonitor();
     loop();
-  }, 5000); 
-}
-
-import { discoverRecentPosts } from "./collector";
-
-async function seedCollection() {
-  logger.info("🌱 Iniciando rotina automática de Semeação de concorrentes...");
-  
-  // Aqui você define os @ dos concorrentes de sucesso que deseja monitorar.
-  // A IA vai visitar o perfil deles automaticamente, extrair os 3 posts mais recentes
-  // e coletar os likers desses posts!
-  const targetCompetitors = [
-    "https://www.instagram.com/barbeariacorleone/",
-    "https://www.instagram.com/seuelias/",
-    // Adicione mais URLs de perfis de barbearias grandes aqui
-  ];
-
-  for (const profileUrl of targetCompetitors) {
-    // 1. Descobre os 3 posts mais recentes do concorrente
-    const recentPosts = await discoverRecentPosts(profileUrl, 3);
-    
-    // 2. Coloca os posts na fila para extrair os likers
-    for (const postUrl of recentPosts) {
-      await prospectingQueue.add("COLLECT_PROFILE", {
-        source: "likes",
-        postUrl,
-      });
-    }
-  }
-
-  // Agenda para rodar novamente daqui a 24 horas para coletar NOVOS likers desses mesmos posts (ou novos que você adicionar)
-  setTimeout(() => {
-    seedCollection();
-  }, 24 * 60 * 60 * 1000); // 24 horas
+  }, 5000);
 }
 
 start().catch(err => {

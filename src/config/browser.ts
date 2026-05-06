@@ -25,7 +25,7 @@ export async function getBrowserSession(accountId: string = 'default'): Promise<
 
   const storageStatePath = path.join(SESSIONS_DIR, `${accountId}.json`);
   
-  const isHeadless = true; 
+  const isHeadless = process.env.BROWSER_HEADLESS === 'true' || process.env.BROWSER_HEADLESS === undefined; 
   
   if (!globalBrowser) {
     logger.info(`[BROWSER] Lançando navegador global. Headless mode: ${isHeadless}`);

@@ -15,8 +15,10 @@ export interface FilterResult {
   reason?: string;
 }
 
-const POSITIVE_KEYWORDS = ['barber', 'barbearia', 'corte', 'fade', 'barbeiro'];
-const NEGATIVE_KEYWORDS = ['curso', 'mentor', 'iniciante', 'aula', 'workshop'];
+const POSITIVE_KEYWORDS = [
+  'barbearia', 'barber', 'fundador', 'founder', 'proprietário', 'owner', 'ceo', 'diretor', 'mentor de barbeiro', 'sócio', 'barbeiro e empresário'
+];
+const NEGATIVE_KEYWORDS = ['curso', 'iniciante', 'aula', 'workshop', 'estudante'];
 
 /**
  * Módulo FILTER: Pré-filtro rápido sem custo de IA.
@@ -58,8 +60,8 @@ export async function runFilter(lead: FilterInput): Promise<FilterResult> {
     return { passed: false, reason: 'NEGATIVE_KEYWORD' };
   }
 
-  // 5. Positive Keywords (Must be a barbershop, not just a random person)
-  const hasPositive = POSITIVE_KEYWORDS.some(word => combinedText.includes(word));
+  // 5. Positive Keywords (Foco em Donos e Mentores)
+  const hasPositive = POSITIVE_KEYWORDS.some(word => combinedText.includes(word)) || combinedText.includes('@'); // Menção a outra barbearia é sinal de dono/colaborador
   if (!hasPositive) {
     return { passed: false, reason: 'NO_POSITIVE_KEYWORD' };
   }

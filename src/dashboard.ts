@@ -1,6 +1,7 @@
 import * as http from 'http';
 import { prisma } from './db';
 import { logger } from './utils/logger';
+import { flushPendingDMs, triggerCollection } from './index';
 
 // Seed inicial da blacklist com clientes/conhecidos já cadastrados
 export async function seedBlacklist() {
@@ -88,7 +89,37 @@ export function startDashboard(port = 3000) {
       return;
     }
 
-    if (req.url === '/') {
+    // ─ Rota para forçar flush de DMs imediatamente ──────────────────────────
+    if (req.url === '/trigger-dm-flush' && req.method === 'POST') {
+      try {
+        flushPendingDMs().catch(e => logger.error('[DASHBOARD] Erro no flush de DMs:', e));
+        res.writeHead(302, { 'Location': '/?flush=1' });
+        res.end();
+      } catch (error) {
+        res.writeHead(500);
+        res.end('Erro ao iniciar flush de DMs');
+      }
+      return;
+    }
+
+    // ─ Rota para forçar coleta imediatamente ────────────────────────────────
+    if (req.url === '/trigger-collect' && req.method === 'POST') {
+      try {
+        triggerCollection().catch(e => logger.error('[DASHBOARD] Erro na coleta manual:', e));
+        res.writeHead(302, { 'Location': '/?collect=1' });
+        res.end();
+      } catch (error) {
+        res.writeHead(500);
+        res.end('Erro ao iniciar coleta manual');
+      }
+      return;
+    }
+
+    if (req.url === '/' || req.url?.startsWith('/?')) {
+      const urlParams = new URLSearchParams(req.url?.split('?')[1] || '');
+      const flushTriggered = urlParams.get('flush') === '1';
+      const collectTriggered = urlParams.get('collect') === '1';
+
       try {
         // Busca configurações
         const config = await prisma.systemConfig.findUnique({
@@ -101,6 +132,40 @@ export function startDashboard(port = 3000) {
           include: { interactions: true },
           take: 100
         });
+
+        // ─ Estatísticas de Automação ──────────────────────────────────────────────────────────────────────────────────
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dmsEnviadasHoje = await prisma.interaction.count({
+          where: {
+            type: 'DIRECT_MESSAGE',
+            status: 'COMPLETED',
+            executedAt: { gte: today }
+          }
+        });
+        const dmsPendentes = await prisma.interaction.count({
+          where: { type: 'DIRECT_MESSAGE', status: 'PENDING' }
+        });
+        const dmsEmAndamento = await prisma.interaction.count({
+          where: { type: 'DIRECT_MESSAGE', status: 'PROCESSING' }
+        });
+        const dmsFalhas = await prisma.interaction.count({
+          where: { type: 'DIRECT_MESSAGE', status: 'FAILED', executedAt: { gte: today } }
+        });
+        const leadsAprovadosSemDM = await prisma.lead.count({
+          where: { status: 'APPROVED', interactions: { none: {} } }
+        });
+
+        // Ó próximo CRON é 08:00 BRT (11:00 UTC)
+        const now = new Date();
+        const nextCron = new Date();
+        nextCron.setUTCHours(11, 0, 0, 0);
+        if (nextCron <= now) nextCron.setUTCDate(nextCron.getUTCDate() + 1);
+        const horasParaCron = Math.floor((nextCron.getTime() - now.getTime()) / 3600000);
+        const minutosParaCron = Math.floor(((nextCron.getTime() - now.getTime()) % 3600000) / 60000);
+        const countdownCron = `${horasParaCron}h ${minutosParaCron}min`;
+        // ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
         // Busca a lista de exclusão
         const blacklist = await prisma.blacklist.findMany({
@@ -580,18 +645,187 @@ export function startDashboard(port = 3000) {
             font-size: 0.9rem;
             font-style: italic;
         }
+
+        /* ─── Painel de Automação ──────────────────────────────────────────── */
+        .automation-panel {
+            background: var(--surface-color);
+            border: 1px solid rgba(79, 70, 229, 0.25);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: var(--glass-blur);
+            animation: fadeIn 1s ease-out;
+        }
+        .automation-panel h2 {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            color: #a5b4fc;
+        }
+        .automation-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--surface-border);
+            border-radius: 14px;
+            padding: 1.25rem 1rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            line-height: 1;
+        }
+        .stat-card .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .stat-green { color: var(--success); }
+        .stat-yellow { color: var(--warning); }
+        .stat-red { color: var(--danger); }
+        .stat-blue { color: #60a5fa; }
+        .stat-purple { color: #a78bfa; }
+
+        .cron-info {
+            background: rgba(79, 70, 229, 0.08);
+            border: 1px solid rgba(79, 70, 229, 0.2);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .cron-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            flex-shrink: 0;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .cron-text { flex: 1; font-size: 0.9rem; color: var(--text-main); }
+        .cron-countdown { color: #a5b4fc; font-weight: 600; font-size: 0.9rem; }
+        .automation-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .btn-action {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            padding: 0.6rem 1.25rem;
+        }
+        .btn-collect { background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%); box-shadow: 0 4px 12px rgba(8,145,178,0.3); }
+        .btn-collect:hover { box-shadow: 0 6px 18px rgba(8,145,178,0.5); }
+        .btn-dm { background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); box-shadow: 0 4px 12px rgba(124,58,237,0.3); }
+        .btn-dm:hover { box-shadow: 0 6px 18px rgba(124,58,237,0.5); }
+
+        .alert-banner {
+            padding: 0.75rem 1.25rem;
+            border-radius: 10px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .alert-success { background: var(--success-bg); border: 1px solid rgba(16,185,129,0.3); color: var(--success); }
     </style>
 </head>
 <body>
     <header class="header">
         <div>
             <h1 class="header-title">PerfectProspect</h1>
-            <p class="header-subtitle">AI Lead Generation & DM Automation</p>
+            <p class="header-subtitle">AI Lead Generation &amp; DM Automation</p>
         </div>
-        <div class="stat-badge">
-            Total Leads: ${leads.length}
+        <div style="display:flex;align-items:center;gap:1rem;">
+            <div style="text-align:right;">
+                <div class="stat-badge">Total Leads: ${leads.length}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.35rem">✅ ${dmsEnviadasHoje} DMs enviadas hoje &nbsp;|&nbsp; ⏳ ${dmsPendentes} na fila</div>
+            </div>
         </div>
     </header>
+
+    ${flushTriggered ? '<div class="alert-banner alert-success">✅ Flush de DMs iniciado! As mensagens serão enviadas nos próximos minutos.</div>' : ''}
+    ${collectTriggered ? '<div class="alert-banner alert-success">✅ Coleta manual iniciada! Novos leads serão coletados em breve.</div>' : ''}
+
+    <!-- PAINEL DE AUTOMAÇÃO -->
+    <section class="automation-panel">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+            Status da Automação
+        </h2>
+
+        <div class="cron-info">
+            <span class="cron-dot"></span>
+            <span class="cron-text">📅 CRON diário ativo &mdash; coleta novos leads todo dia às <strong>08:00 BRT</strong> e envia DMs às <strong>08:30 BRT</strong></span>
+            <span class="cron-countdown">⏳ Próxima execução em ${countdownCron}</span>
+        </div>
+
+        <div class="automation-stats">
+            <div class="stat-card">
+                <span class="stat-value stat-green">${dmsEnviadasHoje}</span>
+                <span class="stat-label">DMs Enviadas Hoje</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value stat-yellow">${dmsPendentes}</span>
+                <span class="stat-label">DMs na Fila</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value stat-blue">${dmsEmAndamento}</span>
+                <span class="stat-label">Em Andamento</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value stat-red">${dmsFalhas}</span>
+                <span class="stat-label">Falhas Hoje</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value stat-purple">${leadsAprovadosSemDM}</span>
+                <span class="stat-label">Aprovados sem DM</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" style="color:var(--text-muted)">${leads.length}</span>
+                <span class="stat-label">Total de Leads</span>
+            </div>
+        </div>
+
+        <div class="automation-actions">
+            <form action="/trigger-collect" method="POST" style="display:inline">
+                <button type="submit" class="btn-action btn-collect">
+                    🔍 Coletar Leads Agora
+                </button>
+            </form>
+            <form action="/trigger-dm-flush" method="POST" style="display:inline">
+                <button type="submit" class="btn-action btn-dm">
+                    📤 Enviar DMs Pendentes Agora (${leadsAprovadosSemDM} leads)
+                </button>
+            </form>
+        </div>
+    </section>
 
     <section class="config-card">
         <h2>

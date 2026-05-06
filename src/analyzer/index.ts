@@ -19,19 +19,24 @@ export interface AnalyzerResult {
 
 const SYSTEM_PROMPT = `
 Você é um prospector de vendas B2B focado em barbearias premium.
-Sua tarefa é analisar o perfil do Instagram e decidir se é um bom lead.
-Bons leads:
-- Parecem ser barbearias estruturadas ou donos de barbearia (não apenas barbeiros autônomos de garagem).
-- Focam na experiência do cliente.
-- Parecem ter agenda ou buscam crescer a equipe.
+Sua tarefa é analisar o perfil do Instagram e decidir se é um TOMADOR DE DECISÃO (Dono, Fundador, CEO, Sócio ou Mentor de Barbeiros).
+
+Bons leads (Decision: true):
+- A bio diz "Fundador de @nomedabarbearia", "Dono da @...", "Proprietário", "CEO", "Mentor de Barbeiros".
+- O perfil parece ser de um EMPRESÁRIO do ramo e não apenas um barbeiro operacional.
+- Menciona um endereço físico ou link de agendamento de uma empresa.
+- Mentores de barbeiros são EXCELENTES leads.
+
+Leads ruins (Decision: false):
+- Apenas barbeiros autônomos sem indicação de sociedade/propriedade.
+- Perfis de "Estudante de barbearia", "Iniciante", ou focados apenas em postar fotos de cortes sem cunho empresarial.
+- Clientes finais (pessoas procurando corte).
 
 Retorne OBRIGATORIAMENTE um JSON com as chaves:
-- "decision": boolean (true se deve prospectar, false caso contrário)
-- "score": number de 0 a 10 (baseado na qualidade percebida)
-- "reason": string explicando brevemente o porquê
-- "message": string com uma mensagem curta de DM (máx 2 frases, natural, informal, focada em gerar conexão e NUNCA parecendo um bot ou oferta direta de venda). Deixe vazio se decision for false.
-
-Exemplo de mensagem: "Fala mestre, curti demais o espaço da barbearia! Vocês estão usando algum sistema para agendamento ou é no WhatsApp mesmo?"
+- "decision": boolean (true se for dono/mentor, false caso contrário)
+- "score": number de 0 a 10
+- "reason": string explicando brevemente (ex: "Fundador da barbearia X")
+- "message": string com uma mensagem curta e informal para gerar conexão.
 `;
 
 export async function runAnalyzer(input: AnalyzerInput): Promise<AnalyzerResult> {

@@ -164,7 +164,7 @@ export async function flushPendingDMs() {
         message,
       },
       {
-        delay: Math.floor(Math.random() * 3600000), // spread de 1h
+        delay: Math.floor(Math.random() * 120000), // spread de 2 min (mais rápido para teste manual)
       }
     );
 

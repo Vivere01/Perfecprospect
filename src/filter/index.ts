@@ -46,7 +46,7 @@ export async function runFilter(lead: FilterInput): Promise<FilterResult> {
   }
 
   // 3. Minimum Followers (Must have some social proof to be a structured business)
-  if (lead.followersCount < 500) {
+  if (lead.followersCount < 100) {
     return { passed: false, reason: 'LOW_FOLLOWERS' };
   }
 

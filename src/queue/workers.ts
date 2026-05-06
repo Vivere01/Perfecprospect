@@ -26,7 +26,7 @@ const processCollectProfile = async (data: CollectProfileData) => {
     await prospectingQueue.add('ANALYZE_PROFILE', {
       username,
     }, {
-      delay: Math.floor(Math.random() * 60000) // espalha a análise em até 60s
+      delay: Math.floor(Math.random() * 5000) // espalha a análise em até 5s
     });
   }
 };
@@ -89,7 +89,7 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
       username: data.username,
       message: result.message
     }, {
-      delay: Math.floor(Math.random() * 1800000) // spread de até 30min
+      delay: Math.floor(Math.random() * 60000) // spread de até 1min
     });
 
     logger.info(`[WORKER] ✅ DM enfileirada para @${data.username}`);

@@ -1,0 +1,9 @@
+@echo off
+echo [1/3] Adicionando arquivos...
+git add .
+echo [2/3] Criando commit...
+git commit -m "feat: otimizacao de delays, ajuste de filtro e melhorias no dashboard"
+echo [3/3] Enviando para o GitHub...
+git push
+echo Done!
+pause

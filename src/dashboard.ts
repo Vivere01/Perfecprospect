@@ -115,6 +115,22 @@ export function startDashboard(port = 3000) {
       return;
     }
 
+    // ─ Rota para forçar análise de leads parados ─────────────────────────────
+    if (req.url === '/trigger-analyze' && req.method === 'POST') {
+      try {
+        const pendingLeads = await prisma.lead.findMany({ where: { status: 'COLLECTED' }, take: 50 });
+        for (const lead of pendingLeads) {
+          await prospectingQueue.add('ANALYZE_PROFILE', { username: lead.username });
+        }
+        res.writeHead(302, { 'Location': '/?analyze=1' });
+        res.end();
+      } catch (error) {
+        res.writeHead(500);
+        res.end('Erro ao iniciar análise manual');
+      }
+      return;
+    }
+
     if (req.url === '/' || req.url?.startsWith('/?')) {
       const urlParams = new URLSearchParams(req.url?.split('?')[1] || '');
       const flushTriggered = urlParams.get('flush') === '1';
@@ -155,6 +171,12 @@ export function startDashboard(port = 3000) {
         });
         const leadsAprovadosSemDM = await prisma.lead.count({
           where: { status: 'APPROVED', interactions: { none: {} } }
+        });
+        const leadsColetados = await prisma.lead.count({
+          where: { status: 'COLLECTED' }
+        });
+        const leadsRejeitados = await prisma.lead.count({
+          where: { status: { in: ['REJECTED', 'FILTERED_OUT'] } }
         });
 
         // Ó próximo CRON é 08:00 BRT (11:00 UTC)
@@ -770,6 +792,7 @@ export function startDashboard(port = 3000) {
 
     ${flushTriggered ? '<div class="alert-banner alert-success">✅ Flush de DMs iniciado! As mensagens serão enviadas nos próximos minutos.</div>' : ''}
     ${collectTriggered ? '<div class="alert-banner alert-success">✅ Coleta manual iniciada! Novos leads serão coletados em breve.</div>' : ''}
+    ${urlParams.get('analyze') === '1' ? '<div class="alert-banner alert-success">✅ Análise de leads pendentes iniciada!</div>' : ''}
 
     <!-- PAINEL DE AUTOMAÇÃO -->
     <section class="automation-panel">
@@ -805,11 +828,19 @@ export function startDashboard(port = 3000) {
             </div>
             <div class="stat-card">
                 <span class="stat-value stat-purple">${leadsAprovadosSemDM}</span>
-                <span class="stat-label">Aprovados sem DM</span>
+                <span class="stat-label">Aprovados s/ DM</span>
             </div>
             <div class="stat-card">
-                <span class="stat-value" style="color:var(--text-muted)">${leads.length}</span>
-                <span class="stat-label">Total de Leads</span>
+                <span class="stat-value stat-red">${leadsRejeitados}</span>
+                <span class="stat-label">Filtrados/Rejeitados</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" style="color:var(--text-muted)">${leadsColetados}</span>
+                <span class="stat-label">Aguardando IA</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" style="color:var(--text-main)">${leads.length}</span>
+                <span class="stat-label">Leads Recentes</span>
             </div>
         </div>
 
@@ -819,9 +850,14 @@ export function startDashboard(port = 3000) {
                     🔍 Coletar Leads Agora
                 </button>
             </form>
+            <form action="/trigger-analyze" method="POST" style="display:inline">
+                <button type="submit" class="btn-action" style="background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    🤖 Analisar Pendentes (${leadsColetados})
+                </button>
+            </form>
             <form action="/trigger-dm-flush" method="POST" style="display:inline">
                 <button type="submit" class="btn-action btn-dm">
-                    📤 Enviar DMs Pendentes Agora (${leadsAprovadosSemDM} leads)
+                    📤 Enviar DMs (${leadsAprovadosSemDM})
                 </button>
             </form>
         </div>

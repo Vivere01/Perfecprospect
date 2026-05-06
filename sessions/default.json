@@ -35,7 +35,7 @@
       "value": "1280x800",
       "domain": ".instagram.com",
       "path": "/",
-      "expires": 1778674815,
+      "expires": 1778675443,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax"
@@ -45,7 +45,7 @@
       "value": "57705323679",
       "domain": ".instagram.com",
       "path": "/",
-      "expires": 1785846016.871876,
+      "expires": 1785846649.657401,
       "httpOnly": false,
       "secure": true,
       "sameSite": "None"
@@ -55,7 +55,7 @@
       "value": "1.0000000149011612",
       "domain": ".instagram.com",
       "path": "/",
-      "expires": 1778674815,
+      "expires": 1778675443,
       "httpOnly": false,
       "secure": true,
       "sameSite": "None"
@@ -65,7 +65,7 @@
       "value": "8rMc5bxEeUCWj71FRNLKvYUPShy64urQ",
       "domain": ".instagram.com",
       "path": "/",
-      "expires": 1812630016.871645,
+      "expires": 1812630649.657195,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax"
@@ -81,16 +81,6 @@
       "sameSite": "None"
     },
     {
-      "name": "rur",
-      "value": "\"FRC\\05457705323679\\0541809606016:01fe21bf1846aa61461db4a0044ddb3b1d3719cfaa1e8de4c0e61aaf5ead0c2d0a874277\"",
-      "domain": ".instagram.com",
-      "path": "/",
-      "expires": -1,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "Lax"
-    },
-    {
       "name": "fr",
       "value": "0WmNVBKlPap2VdsvT.AWc6gclaz3Yur15D-z1UYreBf0Nl7SOHUQnG8bHlDLaTYXT1OLg.Bp9mVg..AAA.0.0.Bp-zIC.AWebLljGJX1JcEAzmc9dJnWsSkM",
       "domain": ".facebook.com",
@@ -99,6 +89,16 @@
       "httpOnly": true,
       "secure": true,
       "sameSite": "None"
+    },
+    {
+      "name": "rur",
+      "value": "\"FRC\\05457705323679\\0541809606649:01fe4920fd998b17b2a3766b062a2ea6f92846e3ea956b33111d06da81d6aca13c589194\"",
+      "domain": ".instagram.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
     }
   ],
   "origins": [
@@ -111,11 +111,11 @@
         },
         {
           "name": "chatd-deviceid",
-          "value": "f5c4af10-a5c3-4d1f-af0d-d181500e415d"
+          "value": "848d09c2-6f49-464f-bb0a-7a3a2b9fc68a"
         },
         {
           "name": "IGSession",
-          "value": "2nqm38:1778071816428"
+          "value": "2nqm38:1778072444899"
         },
         {
           "name": "pigeon_state",
@@ -131,7 +131,7 @@
         },
         {
           "name": "Session",
-          "value": "e09t1u:1778070051428"
+          "value": "a9o2hv:1778070679899"
         },
         {
           "name": "_oz_bandwidthEstimate",
@@ -180,7 +180,7 @@
         },
         {
           "name": "Session",
-          "value": "zgrshx:1778070052957"
+          "value": "gjrume:1778070681823"
         }
       ]
     }

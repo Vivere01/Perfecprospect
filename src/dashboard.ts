@@ -89,6 +89,45 @@ export function startDashboard(port = 3000) {
       return;
     }
 
+    // Rota para adicionar perfil de referência
+    if (req.url === '/add-reference' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const params = new URLSearchParams(body);
+          const rawUrl = params.get('url') || '';
+          if (rawUrl) {
+            const url = rawUrl.trim().replace(/\/$/, '') + '/';
+            const username = url.split("instagram.com/")[1]?.replace("/", "") || `ref_${Date.now()}`;
+            await prisma.referenceProfile.upsert({
+              where: { username },
+              update: { url },
+              create: { username, url, type: 'COMPETITOR' },
+            });
+          }
+          res.writeHead(302, { 'Location': '/' });
+          res.end();
+        } catch (error) {
+          logger.error('Error adding reference:', error);
+          res.writeHead(500);
+          res.end('Erro ao adicionar perfil de referência');
+        }
+      });
+      return;
+    }
+
+    // Rota para remover perfil de referência
+    if (req.url?.startsWith('/remove-reference/') && req.method === 'POST') {
+      const id = req.url.replace('/remove-reference/', '');
+      try {
+        await prisma.referenceProfile.delete({ where: { id } });
+      } catch { /* Ignora */ }
+      res.writeHead(302, { 'Location': '/' });
+      res.end();
+      return;
+    }
+
     // ─ Rota para forçar flush de DMs imediatamente ──────────────────────────
     if (req.url === '/trigger-dm-flush' && req.method === 'POST') {
       try {
@@ -191,6 +230,11 @@ export function startDashboard(port = 3000) {
 
         // Busca a lista de exclusão
         const blacklist = await prisma.blacklist.findMany({
+          orderBy: { createdAt: 'desc' }
+        });
+
+        // Busca perfis de referência
+        const referenceProfiles = await prisma.referenceProfile.findMany({
           orderBy: { createdAt: 'desc' }
         });
 
@@ -878,6 +922,38 @@ export function startDashboard(port = 3000) {
             </div>
             <button type="submit">Salvar Script e Ativar IA</button>
         </form>
+    </section>
+
+    <section class="config-card" style="border-color: rgba(16, 185, 129, 0.25);">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="color:var(--success)">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-2.533-4.656 9.333 9.333 0 00-4.213-.997 9.333 9.333 0 00-4.212.997 4.125 4.125 0 00-2.533 4.656 9.337 9.337 0 004.121.952 9.38 9.38 0 002.625-.372zm3.9-16.108a4.875 4.875 0 11-1.5 9.493 4.875 4.875 0 011.5-9.493zM3.75 20.25a.75.75 0 01.75-.75h2.625a.75.75 0 010 1.5H4.5a.75.75 0 01-.75-.75zm0-3.75a.75.75 0 01.75-.75h1.125a.75.75 0 010 1.5H4.5a.75.75 0 01-.75-.75zm0-3.75a.75.75 0 01.75-.75h1.125a.75.75 0 010 1.5H4.5a.75.75 0 01-.75-.75z" />
+            </svg>
+            Perfis de Referência (Onde a IA busca leads)
+        </h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.25rem">A IA visita esses perfis, analisa os posts recentes e coleta pessoas que interagiram e que se encaixam no seu ICP.</p>
+
+        <form class="blacklist-add-form" action="/add-reference" method="POST">
+            <input type="text" name="url" placeholder="https://www.instagram.com/usuario/" required style="border-color: rgba(16, 185, 129, 0.25);" />
+            <button type="submit" style="background: linear-gradient(135deg, var(--success) 0%, #059669 100%); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">+ Adicionar Referência</button>
+        </form>
+
+        <div class="blacklist-grid">
+            ${referenceProfiles.length === 0
+              ? '<p class="blacklist-empty">Nenhum perfil de referência cadastrado.</p>'
+              : referenceProfiles.map(ref => `
+                <div class="blacklist-card" style="background: rgba(16, 185, 129, 0.06); border-color: rgba(16, 185, 129, 0.15);">
+                  <div class="blacklist-user">
+                    <a href="${ref.url}" target="_blank" class="blacklist-username" style="color:#6ee7b7">@${ref.username}</a>
+                    <span class="blacklist-reason">Última coleta: ${ref.lastCollectedAt ? new Date(ref.lastCollectedAt).toLocaleDateString() : 'Nunca'}</span>
+                  </div>
+                  <form action="/remove-reference/${ref.id}" method="POST" style="display:inline">
+                    <button type="submit" class="blacklist-remove-btn" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;">Remover</button>
+                  </form>
+                </div>
+              `).join('')
+            }
+        </div>
     </section>
 
     <section class="blacklist-section">

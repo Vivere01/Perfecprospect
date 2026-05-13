@@ -101,3 +101,12 @@ model SystemConfig {
   dmScript    String   @default("Fala @{username}, tudo bem? Curti demais seu perfil! Vocês estão usando algum sistema para agendamento na barbearia?")
   updatedAt   DateTime @updatedAt
 }
+
+model ReferenceProfile {
+  id              String   @id @default(uuid())
+  username        String   @unique
+  url             String
+  type            String   @default("COMPETITOR") // COMPETITOR, INFLUENCER, etc.
+  lastCollectedAt DateTime?
+  createdAt       DateTime @default(now())
+}

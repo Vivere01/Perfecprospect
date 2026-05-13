@@ -7,6 +7,8 @@ import { executeInteractionWorkflow } from '../executor';
 import { prisma } from '../db';
 import { fetchProfileInfo } from '../collector/profileFetcher';
 import { triggerCollection, flushPendingDMs } from '../index';
+import { getBrowserSession } from '../config/browser';
+import { discoverSimilarAccounts } from '../executor/actions';
 
 /**
  * WORKER REAL: Integra todos os módulos com as filas
@@ -50,8 +52,6 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
     persona: 'FRIENDLY'
   });
 
-  // FIX: Busca o lead usando findFirst para garantir que temos o registro
-  // criado pelo analyzer (evita condição de corrida com findUnique)
   if (result.passed && result.message) {
     const lead = await prisma.lead.findFirst({
       where: { username: data.username },
@@ -63,7 +63,6 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
       return;
     }
 
-    // Verifica se já existe interação para evitar DM duplicada
     const existingInteraction = await prisma.interaction.findFirst({
       where: { leadId: lead.id, type: 'DIRECT_MESSAGE' }
     });
@@ -72,7 +71,6 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
       return;
     }
 
-    // Cria a Interação Pendente
     const interaction = await prisma.interaction.create({
       data: {
         leadId: lead.id,
@@ -82,14 +80,13 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
       }
     });
 
-    // Enfileira na fila DEDICADA para mensagens (com atraso aleatório humanizado)
     await interactionQueue.add('EXECUTE_INTERACTION', {
       interactionId: interaction.id,
       leadId: lead.id,
       username: data.username,
       message: result.message
     }, {
-      delay: Math.floor(Math.random() * 60000) // spread de até 1min
+      delay: Math.floor(Math.random() * 60000)
     });
 
     logger.info(`[WORKER] ✅ DM enfileirada para @${data.username}`);
@@ -98,10 +95,45 @@ const processAnalyzeProfile = async (data: AnalyzeProfileData) => {
   }
 };
 
+const processDiscoverReferences = async (data: { profileUrl: string }) => {
+  logger.info(`[WORKER] AI Discovering new references from: ${data.profileUrl}`);
+  const { page, close } = await getBrowserSession();
+
+  try {
+    await page.goto(data.profileUrl, { waitUntil: 'domcontentloaded' });
+    const usernames = await discoverSimilarAccounts(page);
+    
+    for (const username of usernames.slice(0, 5)) {
+      const exists = await prisma.referenceProfile.findUnique({ where: { username } });
+      if (exists) continue;
+
+      const info = await fetchProfileInfo(username);
+      if (!info) continue;
+
+      const bioLower = (info.bio || '').toLowerCase();
+      const isRelevant = bioLower.includes('barber') || bioLower.includes('barbearia') || bioLower.includes('corte');
+
+      if (isRelevant) {
+        await prisma.referenceProfile.create({
+          data: {
+            username,
+            url: `https://www.instagram.com/${username}/`,
+            type: 'AI_DISCOVERED'
+          }
+        });
+        logger.info(`[WORKER] ✨ Novo perfil de referência descoberto pela IA: @${username}`);
+      }
+    }
+  } catch (error) {
+    logger.error(`[WORKER] Erro na descoberta de referências:`, error);
+  } finally {
+    await close();
+  }
+};
+
 const processExecuteInteraction = async (data: ExecuteInteractionData & { username: string, message: string }) => {
   logger.info(`[WORKER] Executing interaction for lead: @${data.username}`);
   
-  // Atualiza BD para PROCESSING
   await prisma.interaction.update({
     where: { id: data.interactionId },
     data: { status: 'PROCESSING' }
@@ -110,10 +142,9 @@ const processExecuteInteraction = async (data: ExecuteInteractionData & { userna
   const execResult = await executeInteractionWorkflow({
     username: data.username,
     message: data.message,
-    accountId: 'default' // Usar a mesma sessão 'default' que foi logada
+    accountId: 'default'
   });
 
-  // Atualiza BD com o resultado final
   await prisma.interaction.update({
     where: { id: data.interactionId },
     data: { 
@@ -132,7 +163,6 @@ const processExecuteInteraction = async (data: ExecuteInteractionData & { userna
 };
 
 export const startWorker = () => {
-  // WORKER DE COLETA/ANÁLISE + handlers dos CRONs diários
   const prospectingWorker = new Worker(
     QUEUE_NAME,
     async (job: Job) => {
@@ -144,18 +174,17 @@ export const startWorker = () => {
         case 'ANALYZE_PROFILE':
           await processAnalyzeProfile(job.data as AnalyzeProfileData);
           break;
-
-        // ─── Jobs do CRON diário ──────────────────────────────────────
         case 'DAILY_SEED':
           logger.info('[CRON] ⏰ Job DAILY_SEED disparado! Iniciando coleta...');
           await triggerCollection(job.data.competitors);
           break;
-
         case 'DAILY_DM_FLUSH':
           logger.info('[CRON] ⏰ Job DAILY_DM_FLUSH disparado! Processando DMs pendentes...');
           await flushPendingDMs();
           break;
-
+        case 'DISCOVER_REFERENCES':
+          await processDiscoverReferences(job.data as { profileUrl: string });
+          break;
         default:
           logger.warn(`[WORKER] Job desconhecido: ${job.name}`);
       }
@@ -163,7 +192,6 @@ export const startWorker = () => {
     { connection: redisConnection, concurrency: 1 }
   );
 
-  // WORKER DE MENSAGENS (Limite Exato: 40 DMs por dia!)
   const interactionWorker = new Worker(
     INTERACTION_QUEUE_NAME,
     async (job: Job) => {
@@ -174,10 +202,10 @@ export const startWorker = () => {
     },
     {
       connection: redisConnection,
-      concurrency: 1, // Manda uma mensagem por vez
+      concurrency: 1,
       limiter: {
         max: 40,
-        duration: 24 * 60 * 60 * 1000, // 24 horas
+        duration: 24 * 60 * 60 * 1000,
       }
     }
   );

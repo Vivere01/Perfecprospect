@@ -7,7 +7,7 @@ import { startDashboard, seedBlacklist } from "./dashboard";
 import { discoverRecentPosts } from "./collector";
 import { prisma } from "./db";
 
-// ─── Competidores a monitorar (edite aqui para adicionar mais) ─────────────
+// ─── Competidores a monitorar (agora vindos do banco, estes são apenas fallbacks) ─────────────
 const TARGET_COMPETITORS = [
   "https://www.instagram.com/barbeariacorleone/",
   "https://www.instagram.com/seuelias/",
@@ -23,8 +23,9 @@ async function start() {
   // 1. Inicializa dependências críticas
   await initMemory();
 
-  // 2. Blacklist inicial
+  // 2. Blacklist inicial e Perfis de Referência
   await seedBlacklist();
+  await seedReferenceProfiles();
 
   // 3. Registra o CRON diário de coleta (persistido no Redis — sobrevive a reinicializações)
   await registerDailyCronJobs();
@@ -47,6 +48,18 @@ async function start() {
   setInterval(() => {
     logger.debug(`🧠 Sistema ativo: ${new Date().toISOString()}`);
   }, 60000);
+}
+
+async function seedReferenceProfiles() {
+  for (const url of TARGET_COMPETITORS) {
+    const username = url.split("instagram.com/")[1].replace("/", "");
+    await prisma.referenceProfile.upsert({
+      where: { username },
+      update: {},
+      create: { username, url, type: "COMPETITOR" }
+    });
+  }
+  logger.info(`[SEED] Perfis de referência iniciais garantidos.`);
 }
 
 /**
@@ -92,7 +105,21 @@ async function registerDailyCronJobs() {
  * Executa a coleta real: visita os perfis competidores,
  * extrai posts recentes e enfileira os likers para análise.
  */
-export async function triggerCollection(competitors = TARGET_COMPETITORS) {
+export async function triggerCollection(customCompetitors?: string[]) {
+  let competitors: string[] = [];
+
+  if (customCompetitors && customCompetitors.length > 0) {
+    competitors = customCompetitors;
+  } else {
+    const dbProfiles = await prisma.referenceProfile.findMany();
+    competitors = dbProfiles.map(p => p.url);
+  }
+
+  if (competitors.length === 0) {
+    logger.warn(`[SEED] Nenhum perfil de referência encontrado. Usando fallbacks.`);
+    competitors = TARGET_COMPETITORS;
+  }
+
   logger.info(`[SEED] Iniciando coleta de ${competitors.length} perfis competidores...`);
   let totalPosts = 0;
 
@@ -108,6 +135,12 @@ export async function triggerCollection(competitors = TARGET_COMPETITORS) {
         });
         totalPosts++;
       }
+
+      // NOVO: IA vasculha perfis semelhantes para expandir a rede de referências
+      await prospectingQueue.add("DISCOVER_REFERENCES", {
+        profileUrl,
+      });
+
     } catch (err) {
       logger.error(`[SEED] Erro ao processar competidor ${profileUrl}:`, err);
     }

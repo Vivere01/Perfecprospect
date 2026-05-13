@@ -188,3 +188,46 @@ export async function followUser(page: Page) {
     await humanDelay(2000, 5000);
   }
 }
+
+/**
+ * Finds similar accounts recommended by Instagram on a profile page.
+ */
+export async function discoverSimilarAccounts(page: Page): Promise<string[]> {
+  logger.info(`[EXECUTOR] Looking for similar accounts suggestions...`);
+  
+  // Look for the "Similar Accounts" arrow button next to Follow/Message
+  const similarArrow = page.locator('header svg[aria-label*="Sugestões"], header svg[aria-label*="Suggested"], header svg[aria-label*="Similar"]').first();
+  
+  if (await similarArrow.isVisible({ timeout: 5000 }).catch(() => false)) {
+    logger.info(`[EXECUTOR] Clicking suggestions arrow...`);
+    await similarArrow.click();
+    await humanDelay(3000, 5000);
+    
+    // The suggestions usually appear in a horizontal list below the header
+    const usernames = await page.evaluate(() => {
+      // Find all links that look like profile links in the suggested section
+      // Usually they are within a horizontal scroll area
+      const links = Array.from(document.querySelectorAll('a[href^="/"]'));
+      const found = new Set<string>();
+      
+      links.forEach(a => {
+        const href = a.getAttribute('href') || '';
+        const username = href.replace(/\//g, '');
+        // Filter out common non-profile links
+        if (username.length > 2 && 
+            !['p', 'explore', 'reels', 'reel', 'stories', 'direct', 'accounts'].includes(username) &&
+            !username.includes('?') &&
+            !username.includes('/')) {
+          found.add(username);
+        }
+      });
+      return Array.from(found);
+    });
+    
+    logger.info(`[EXECUTOR] Found ${usernames.length} suggested accounts.`);
+    return usernames;
+  }
+  
+  logger.info(`[EXECUTOR] Suggestions arrow not found.`);
+  return [];
+}

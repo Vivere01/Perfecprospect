@@ -20,7 +20,7 @@ const processCollectProfile = async (data: CollectProfileData) => {
   const extractedUsernames = await runCollector({
     sourceUrl: data.postUrl || `https://www.instagram.com/${data.target}/`,
     mode: data.source === 'likes' ? 'LIKERS' : 'FOLLOWERS',
-    maxLeads: 20
+    maxLeads: 30
   });
 
   // Enfileira a análise para cada username extraído

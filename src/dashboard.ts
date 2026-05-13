@@ -946,7 +946,7 @@ export function startDashboard(port = 3000) {
                 <div class="blacklist-card" style="background: rgba(16, 185, 129, 0.06); border-color: rgba(16, 185, 129, 0.15);">
                   <div class="blacklist-user">
                     <a href="${ref.url}" target="_blank" class="blacklist-username" style="color:#6ee7b7">@${ref.username}</a>
-                    <span class="blacklist-reason">Última coleta: ${ref.lastCollectedAt ? new Date(ref.lastCollectedAt).toLocaleDateString() : 'Nunca'}</span>
+                    <span class="blacklist-reason">Última coleta: ${ref.lastCollectedAt ? new Date(ref.lastCollectedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Nunca'}</span>
                   </div>
                   <form action="/remove-reference/${ref.id}" method="POST" style="display:inline">
                     <button type="submit" class="blacklist-remove-btn" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;">Remover</button>

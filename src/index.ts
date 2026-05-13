@@ -15,7 +15,7 @@ const TARGET_COMPETITORS = [
 
 // ─── Horário do CRON diário (formato cron: "minuto hora * * *") ────────────
 // Padrão: todo dia às 08:00 (horário UTC-3 = 11:00 UTC)
-const DAILY_CRON = "0 11 * * *"; // 08:00 BRT
+const DAILY_CRON = "0 */4 * * *"; // A cada 4 horas
 
 async function start() {
   logger.info("🚀 Iniciando sistema AI Prospecting Engine...");
@@ -125,7 +125,7 @@ export async function triggerCollection(customCompetitors?: string[]) {
 
   for (const profileUrl of competitors) {
     try {
-      const recentPosts = await discoverRecentPosts(profileUrl, 3);
+      const recentPosts = await discoverRecentPosts(profileUrl, 5);
       logger.info(`[SEED] ${profileUrl} → ${recentPosts.length} posts encontrados`);
 
       for (const postUrl of recentPosts) {
@@ -139,6 +139,13 @@ export async function triggerCollection(customCompetitors?: string[]) {
       // NOVO: IA vasculha perfis semelhantes para expandir a rede de referências
       await prospectingQueue.add("DISCOVER_REFERENCES", {
         profileUrl,
+      });
+
+      // Atualiza timestamp de coleta no BD
+      const username = profileUrl.split("instagram.com/")[1].replace("/", "");
+      await prisma.referenceProfile.update({
+        where: { username },
+        data: { lastCollectedAt: new Date() }
       });
 
     } catch (err) {
@@ -169,7 +176,7 @@ export async function flushPendingDMs() {
       status: "APPROVED",
       interactions: { none: {} },
     },
-    take: 40, // Limite diário
+    take: 30, // Limite diário
   });
 
   logger.info(`[DM_FLUSH] ${pendingLeads.length} leads aprovados sem DM encontrados.`);

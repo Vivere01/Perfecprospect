@@ -1,90 +1,135 @@
 import { Page } from 'playwright';
 import { logger } from '../utils/logger';
-import { humanDelay } from '../utils/humanDelay';
+import { humanDelay, microDelay, occasionalLongPause } from '../utils/timing';
 
 /**
- * Common browser actions used by workers
+ * Common human-like actions for Instagram automation
  */
 
-export async function visitProfile(page: Page, username: string) {
-  logger.info(`[EXECUTOR] Visiting profile: @${username}`);
+export async function openProfile(page: Page, username: string): Promise<boolean> {
+  logger.info(`[EXECUTOR] Navigating to profile: @${username}`);
   await page.goto(`https://www.instagram.com/${username}/`, { waitUntil: 'domcontentloaded' });
   await humanDelay(3000, 6000);
-}
 
-export async function openDirectMessage(page: Page) {
-  logger.info(`[EXECUTOR] Opening Direct Message...`);
-  
-  // Try to find the "Message" button
-  const messageButton = page.locator('header button:has-text("Enviar mensagem"), header button:has-text("Message")').first();
-  
-  if (await messageButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await messageButton.click();
-    await humanDelay(4000, 7000);
-    return true;
+  // Check if profile is valid and not private
+  const isPrivate = await page.locator('h2:has-text("Esta conta é privada"), h2:has-text("This Account is Private")').isVisible().catch(() => false);
+  const notFound = await page.locator('h2:has-text("Página não encontrada"), h2:has-text("Page not found")').isVisible().catch(() => false);
+
+  if (notFound) {
+    logger.warn(`[EXECUTOR] Profile @${username} not found.`);
+    return false;
   }
-  
-  logger.warn(`[EXECUTOR] Message button not found on profile.`);
-  return false;
-}
 
-export async function sendMessage(page: Page, message: string) {
-  logger.info(`[EXECUTOR] Typing message...`);
-  
-  // Wait for the message input to appear
-  const inputSelector = 'div[aria-label*="Mensagem"], div[aria-label*="Message"], div[role="textbox"]';
-  const input = page.locator(inputSelector).first();
-  
-  if (await input.isVisible({ timeout: 10000 }).catch(() => false)) {
-    await input.click();
-    await page.keyboard.type(message, { delay: 100 });
-    await humanDelay(1000, 2000);
-    await page.keyboard.press('Enter');
-    logger.info(`[EXECUTOR] Message sent.`);
-    await humanDelay(2000, 4000);
-    return true;
+  if (isPrivate) {
+    logger.warn(`[EXECUTOR] Profile @${username} is private.`);
+    // Still "exists", but we might want to skip interaction depending on strategy
+    // For now we return true to allow DM attempt if followed, or false to skip
+    return false; 
   }
-  
-  logger.error(`[EXECUTOR] Message input not found.`);
-  return false;
+
+  return true;
 }
 
-export async function likeRecentPosts(page: Page, count: number = 2) {
-  logger.info(`[EXECUTOR] Liking ${count} recent posts...`);
+export async function viewStories(page: Page) {
+  logger.info(`[EXECUTOR] Checking for stories...`);
+  // Profile picture with a story ring usually has aria-label or specific canvas
+  const storyRing = page.locator('header canvas').first();
   
-  // Find post links
-  const postLinks = await page.evaluate(() => {
-    const links = Array.from(document.querySelectorAll('a[href^="/p/"]'));
-    return links.slice(0, 5).map(a => a.getAttribute('href'));
-  });
-
-  let liked = 0;
-  for (const href of postLinks) {
-    if (liked >= count) break;
+  if (await storyRing.isVisible({ timeout: 3000 }).catch(() => false)) {
+    logger.info(`[EXECUTOR] Story found. Viewing...`);
+    await storyRing.click();
     
-    try {
-      await page.goto(`https://www.instagram.com${href}`, { waitUntil: 'domcontentloaded' });
-      await humanDelay(2000, 4000);
-      
-      const likeButton = page.locator('section span svg[aria-label="Curtir"], section span svg[aria-label="Like"]').first();
-      if (await likeButton.isVisible()) {
-        await likeButton.click();
-        liked++;
-        await humanDelay(2000, 4000);
-      }
-    } catch (err) {
-      logger.error(`[EXECUTOR] Error liking post ${href}:`, err);
+    // View 2-3 stories
+    const storyCount = Math.floor(Math.random() * 2) + 1;
+    for (let i = 0; i < storyCount; i++) {
+      await humanDelay(3000, 6000);
+      // Click right side to skip
+      await page.mouse.click(800, 500); 
     }
+    
+    // Close story
+    await page.keyboard.press('Escape');
+    await humanDelay(2000, 4000);
+  } else {
+    logger.info(`[EXECUTOR] No stories to view.`);
+  }
+}
+
+export async function viewAndMaybeLikePost(page: Page, likeProbability: number = 0.5) {
+  logger.info(`[EXECUTOR] Interacting with posts...`);
+  
+  const posts = page.locator('article a[href^="/p/"]');
+  const count = await posts.count();
+  
+  if (count > 0) {
+    const index = Math.floor(Math.random() * Math.min(count, 6));
+    const targetPost = posts.nth(index);
+    
+    await targetPost.scrollIntoViewIfNeeded();
+    await microDelay();
+    await targetPost.click();
+    await humanDelay(4000, 8000); // Simulate reading/viewing
+
+    if (Math.random() < likeProbability) {
+      const likeButton = page.locator('article svg[aria-label="Curtir"], article svg[aria-label="Like"]').first();
+      if (await likeButton.isVisible()) {
+        logger.info(`[EXECUTOR] Liking post...`);
+        await likeButton.click();
+        await humanDelay(1000, 3000);
+      }
+    }
+
+    await page.keyboard.press('Escape'); // Close post
+    await humanDelay(2000, 4000);
   }
 }
 
 export async function followUser(page: Page) {
-  logger.info(`[EXECUTOR] Decided to FOLLOW user.`);
-  const followButton = page.locator('button:has-text("Seguir"), button:has-text("Follow")').first();
+  logger.info(`[EXECUTOR] Attempting to follow...`);
+  const followButton = page.locator('header button:has-text("Seguir"), header button:has-text("Follow")').first();
+  
   if (await followButton.isVisible()) {
-    await followButton.click();
-    await humanDelay(2000, 5000);
+    const text = await followButton.innerText();
+    if (text.includes('Seguir') || text.includes('Follow')) {
+      await followButton.click();
+      logger.info(`[EXECUTOR] Followed user.`);
+      await humanDelay(2000, 5000);
+    } else {
+      logger.info(`[EXECUTOR] Already following user.`);
+    }
   }
+}
+
+export async function sendDM(page: Page, username: string, message: string) {
+  logger.info(`[EXECUTOR] Preparing to send DM to @${username}`);
+  
+  const messageButton = page.locator('header button:has-text("Enviar mensagem"), header button:has-text("Message")').first();
+  
+  if (await messageButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await messageButton.click();
+    await humanDelay(5000, 8000); // Wait for chat to load
+    
+    const textBox = page.locator('div[role="textbox"][aria-label*="Mensagem"], div[role="textbox"][aria-label*="Message"]').first();
+    if (await textBox.isVisible()) {
+      await textBox.click();
+      await page.keyboard.type(message, { delay: 100 });
+      await humanDelay(1000, 3000);
+      await page.keyboard.press('Enter');
+      logger.info(`[EXECUTOR] DM sent successfully.`);
+      await humanDelay(3000, 6000);
+      return true;
+    }
+  }
+  
+  logger.error(`[EXECUTOR] Could not find message box for @${username}`);
+  return false;
+}
+
+export async function simulateScroll(page: Page) {
+  await page.evaluate(() => {
+    window.scrollBy(0, Math.floor(Math.random() * 500) + 200);
+  });
+  await microDelay();
 }
 
 /**
@@ -101,14 +146,11 @@ export async function discoverSimilarAccounts(page: Page): Promise<string[]> {
     await similarArrow.click();
   } else {
     logger.info(`[EXECUTOR] Suggestions arrow not found. Trying to find "Suggested for you" section...`);
-    // Sometimes suggestions are already visible if we scroll a bit or if it's a specific UI version
     await page.evaluate(() => window.scrollBy(0, 300));
     await humanDelay(2000, 4000);
   }
 
-  // The suggestions appear in a list. We look for profile links within that context.
   const usernames = await page.evaluate(() => {
-    // Look for links within containers that typicaly hold suggestions
     const suggestionContainers = Array.from(document.querySelectorAll('div')).filter(el => 
       el.innerText.includes('Sugerido para você') || 
       el.innerText.includes('Suggested for you') ||

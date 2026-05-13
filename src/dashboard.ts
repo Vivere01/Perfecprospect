@@ -2,6 +2,7 @@ import * as http from 'http';
 import { prisma } from './db';
 import { logger } from './utils/logger';
 import { flushPendingDMs, triggerCollection } from './index';
+import { prospectingQueue } from './queue';
 
 // Seed inicial da blacklist com clientes/conhecidos já cadastrados
 export async function seedBlacklist() {
